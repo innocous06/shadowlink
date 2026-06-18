@@ -5,3 +5,4 @@
 - [2026-06-18 15:05] feat: implement async tokio TCP/UDP tunnel session multiplexer
 - [2026-06-18 17:02] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-06-18 17:38] docs: write technical whitepaper on proxy protocol internals
+- [2026-06-18 17:49] docs: write technical whitepaper on proxy protocol internals
