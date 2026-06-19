@@ -7,3 +7,4 @@
 - [2026-06-18 17:38] docs: write technical whitepaper on proxy protocol internals
 - [2026-06-18 17:49] docs: write technical whitepaper on proxy protocol internals
 - [2026-06-18 21:38] chore: update Cargo.toml dependencies and optimize release profile
+- [2026-06-19 09:00] feat: add connection metrics and latency telemetry exporter
