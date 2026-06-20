@@ -13,3 +13,4 @@
 - [2026-06-19 21:55] docs: add architecture diagram and Android build guide
 - [2026-06-20 11:06] docs: add architecture diagram and Android build guide
 - [2026-06-20 13:07] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
+- [2026-06-20 18:33] docs: add architecture diagram and Android build guide
