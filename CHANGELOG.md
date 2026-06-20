@@ -11,3 +11,4 @@
 - [2026-06-19 14:56] chore: update Cargo.toml dependencies and optimize release profile
 - [2026-06-19 18:16] docs: write technical whitepaper on proxy protocol internals
 - [2026-06-19 21:55] docs: add architecture diagram and Android build guide
+- [2026-06-20 11:06] docs: add architecture diagram and Android build guide
