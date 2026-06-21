@@ -16,3 +16,4 @@
 - [2026-06-20 18:33] docs: add architecture diagram and Android build guide
 - [2026-06-21 13:08] test: add fuzzing and integration test suite for packet framing
 - [2026-06-21 15:37] feat: add Android JNI FFI bindings for VPN service integration
+- [2026-06-21 15:44] feat: add connection metrics and latency telemetry exporter
