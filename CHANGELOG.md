@@ -28,3 +28,4 @@
 - [2026-06-24 14:45] fix: resolve memory leak in session cleanup worker loop
 - [2026-06-24 16:46] feat: implement async tokio TCP/UDP tunnel session multiplexer
 - [2026-06-24 19:54] docs: write technical whitepaper on proxy protocol internals
+- [2026-06-24 19:57] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
