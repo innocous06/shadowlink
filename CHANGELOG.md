@@ -25,3 +25,4 @@
 - [2026-06-24 13:23] refactor: modularize tunnel engine into core and client crates
 - [2026-06-24 14:20] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-06-24 14:34] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
+- [2026-06-24 14:45] fix: resolve memory leak in session cleanup worker loop
