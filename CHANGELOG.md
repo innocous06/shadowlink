@@ -22,3 +22,4 @@
 - [2026-06-22 13:41] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-06-24 07:15] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-06-24 10:53] fix: handle broken pipe gracefully on unexpected peer disconnect
+- [2026-06-24 13:23] refactor: modularize tunnel engine into core and client crates
