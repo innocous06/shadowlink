@@ -21,3 +21,4 @@
 - [2026-06-21 20:19] fix: resolve memory leak in session cleanup worker loop
 - [2026-06-22 13:41] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-06-24 07:15] fix: handle broken pipe gracefully on unexpected peer disconnect
+- [2026-06-24 10:53] fix: handle broken pipe gracefully on unexpected peer disconnect
