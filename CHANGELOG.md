@@ -32,3 +32,4 @@
 - [2026-06-25 09:18] docs: add architecture diagram and Android build guide
 - [2026-06-25 12:22] fix: resolve memory leak in session cleanup worker loop
 - [2026-06-25 12:57] feat: implement async tokio TCP/UDP tunnel session multiplexer
+- [2026-06-25 16:06] test: add fuzzing and integration test suite for packet framing
