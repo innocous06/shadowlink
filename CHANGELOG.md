@@ -31,3 +31,4 @@
 - [2026-06-24 19:57] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-06-25 09:18] docs: add architecture diagram and Android build guide
 - [2026-06-25 12:22] fix: resolve memory leak in session cleanup worker loop
+- [2026-06-25 12:57] feat: implement async tokio TCP/UDP tunnel session multiplexer
