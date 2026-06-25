@@ -33,3 +33,4 @@
 - [2026-06-25 12:22] fix: resolve memory leak in session cleanup worker loop
 - [2026-06-25 12:57] feat: implement async tokio TCP/UDP tunnel session multiplexer
 - [2026-06-25 16:06] test: add fuzzing and integration test suite for packet framing
+- [2026-06-25 18:27] fix: handle broken pipe gracefully on unexpected peer disconnect
