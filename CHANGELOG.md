@@ -41,3 +41,4 @@
 - [2026-06-26 17:08] docs: write technical whitepaper on proxy protocol internals
 - [2026-06-26 18:34] docs: write technical whitepaper on proxy protocol internals
 - [2026-06-26 19:05] feat: add connection metrics and latency telemetry exporter
+- [2026-06-26 19:58] refactor: modularize tunnel engine into core and client crates
