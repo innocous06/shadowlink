@@ -36,3 +36,4 @@
 - [2026-06-25 18:27] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-06-26 10:05] perf: reduce lock contention using atomic connection counters
 - [2026-06-26 10:09] refactor: optimize packet routing with zero-copy byte slice buffers
+- [2026-06-26 10:12] feat: add Android JNI FFI bindings for VPN service integration
