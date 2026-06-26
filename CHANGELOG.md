@@ -34,3 +34,4 @@
 - [2026-06-25 12:57] feat: implement async tokio TCP/UDP tunnel session multiplexer
 - [2026-06-25 16:06] test: add fuzzing and integration test suite for packet framing
 - [2026-06-25 18:27] fix: handle broken pipe gracefully on unexpected peer disconnect
+- [2026-06-26 10:05] perf: reduce lock contention using atomic connection counters
