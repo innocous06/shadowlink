@@ -43,3 +43,4 @@
 - [2026-06-26 19:05] feat: add connection metrics and latency telemetry exporter
 - [2026-06-26 19:58] refactor: modularize tunnel engine into core and client crates
 - [2026-06-27 10:02] test: add fuzzing and integration test suite for packet framing
+- [2026-06-27 11:50] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
