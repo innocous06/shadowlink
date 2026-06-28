@@ -49,3 +49,4 @@
 - [2026-06-27 18:10] fix: resolve memory leak in session cleanup worker loop
 - [2026-06-28 10:14] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-06-28 11:08] fix: handle broken pipe gracefully on unexpected peer disconnect
+- [2026-06-28 16:28] refactor: modularize tunnel engine into core and client crates
