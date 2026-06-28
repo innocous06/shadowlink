@@ -47,3 +47,4 @@
 - [2026-06-27 15:50] feat: add connection metrics and latency telemetry exporter
 - [2026-06-27 17:09] docs: add architecture diagram and Android build guide
 - [2026-06-27 18:10] fix: resolve memory leak in session cleanup worker loop
+- [2026-06-28 10:14] fix: handle broken pipe gracefully on unexpected peer disconnect
