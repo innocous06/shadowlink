@@ -55,3 +55,4 @@
 - [2026-06-28 19:36] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-06-28 19:36] refactor: optimize packet routing with zero-copy byte slice buffers
 - [2026-06-28 19:53] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
+- [2026-06-28 20:08] fix: resolve memory leak in session cleanup worker loop
