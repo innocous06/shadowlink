@@ -50,3 +50,4 @@
 - [2026-06-28 10:14] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-06-28 11:08] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-06-28 16:28] refactor: modularize tunnel engine into core and client crates
+- [2026-06-28 18:44] feat: add Android JNI FFI bindings for VPN service integration
