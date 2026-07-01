@@ -60,3 +60,4 @@
 - [2026-06-30 18:11] docs: add architecture diagram and Android build guide
 - [2026-07-01 08:18] perf: reduce lock contention using atomic connection counters
 - [2026-07-01 10:39] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
+- [2026-07-01 12:01] feat: add Android JNI FFI bindings for VPN service integration
