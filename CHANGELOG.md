@@ -73,3 +73,4 @@
 - [2026-07-01 16:34] feat: add connection metrics and latency telemetry exporter
 - [2026-07-01 16:54] feat: add Android JNI FFI bindings for VPN service integration
 - [2026-07-01 18:22] feat: implement async tokio TCP/UDP tunnel session multiplexer
+- [2026-07-01 19:02] fix: handle broken pipe gracefully on unexpected peer disconnect
