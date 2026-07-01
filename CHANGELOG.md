@@ -66,3 +66,4 @@
 - [2026-07-01 12:55] docs: add architecture diagram and Android build guide
 - [2026-07-01 13:30] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-01 13:31] feat: add Android JNI FFI bindings for VPN service integration
+- [2026-07-01 14:18] test: add fuzzing and integration test suite for packet framing
