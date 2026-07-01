@@ -64,3 +64,4 @@
 - [2026-07-01 12:07] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-07-01 12:46] refactor: modularize tunnel engine into core and client crates
 - [2026-07-01 12:55] docs: add architecture diagram and Android build guide
+- [2026-07-01 13:30] feat: add dynamic MTU discovery and packet fragmentation handling
