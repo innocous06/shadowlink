@@ -69,3 +69,4 @@
 - [2026-07-01 14:18] test: add fuzzing and integration test suite for packet framing
 - [2026-07-01 15:26] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-01 15:41] refactor: optimize packet routing with zero-copy byte slice buffers
+- [2026-07-01 16:19] feat: add dynamic MTU discovery and packet fragmentation handling
