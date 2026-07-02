@@ -77,3 +77,4 @@
 - [2026-07-01 20:35] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-02 13:13] feat: add Android JNI FFI bindings for VPN service integration
 - [2026-07-02 17:04] feat: implement async tokio TCP/UDP tunnel session multiplexer
+- [2026-07-02 19:04] fix: handle broken pipe gracefully on unexpected peer disconnect
