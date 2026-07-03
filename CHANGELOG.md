@@ -82,3 +82,4 @@
 - [2026-07-02 21:30] docs: add architecture diagram and Android build guide
 - [2026-07-02 21:50] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-07-03 09:04] perf: reduce lock contention using atomic connection counters
+- [2026-07-03 10:51] test: add fuzzing and integration test suite for packet framing
