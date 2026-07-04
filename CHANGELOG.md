@@ -86,3 +86,4 @@
 - [2026-07-03 11:38] feat: add Android JNI FFI bindings for VPN service integration
 - [2026-07-03 20:26] perf: reduce lock contention using atomic connection counters
 - [2026-07-04 12:54] feat: add dynamic MTU discovery and packet fragmentation handling
+- [2026-07-04 15:11] feat: add connection metrics and latency telemetry exporter
