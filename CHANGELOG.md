@@ -90,3 +90,4 @@
 - [2026-07-04 16:31] docs: write technical whitepaper on proxy protocol internals
 - [2026-07-04 16:44] docs: add architecture diagram and Android build guide
 - [2026-07-04 17:27] feat: add Android JNI FFI bindings for VPN service integration
+- [2026-07-04 18:11] perf: reduce lock contention using atomic connection counters
