@@ -88,3 +88,4 @@
 - [2026-07-04 12:54] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-04 15:11] feat: add connection metrics and latency telemetry exporter
 - [2026-07-04 16:31] docs: write technical whitepaper on proxy protocol internals
+- [2026-07-04 16:44] docs: add architecture diagram and Android build guide
