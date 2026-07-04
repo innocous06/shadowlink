@@ -92,3 +92,4 @@
 - [2026-07-04 17:27] feat: add Android JNI FFI bindings for VPN service integration
 - [2026-07-04 18:11] perf: reduce lock contention using atomic connection counters
 - [2026-07-04 18:23] fix: handle broken pipe gracefully on unexpected peer disconnect
+- [2026-07-04 19:29] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
