@@ -87,3 +87,4 @@
 - [2026-07-03 20:26] perf: reduce lock contention using atomic connection counters
 - [2026-07-04 12:54] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-04 15:11] feat: add connection metrics and latency telemetry exporter
+- [2026-07-04 16:31] docs: write technical whitepaper on proxy protocol internals
