@@ -98,3 +98,4 @@
 - [2026-07-05 16:58] fix: resolve memory leak in session cleanup worker loop
 - [2026-07-05 18:37] perf: reduce lock contention using atomic connection counters
 - [2026-07-05 20:01] docs: write technical whitepaper on proxy protocol internals
+- [2026-07-05 20:07] docs: write technical whitepaper on proxy protocol internals
