@@ -95,3 +95,4 @@
 - [2026-07-04 19:29] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-07-05 12:07] test: add fuzzing and integration test suite for packet framing
 - [2026-07-05 12:54] docs: write technical whitepaper on proxy protocol internals
+- [2026-07-05 16:58] fix: resolve memory leak in session cleanup worker loop
