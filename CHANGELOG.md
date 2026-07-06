@@ -100,3 +100,4 @@
 - [2026-07-05 20:01] docs: write technical whitepaper on proxy protocol internals
 - [2026-07-05 20:07] docs: write technical whitepaper on proxy protocol internals
 - [2026-07-05 21:26] feat: implement async tokio TCP/UDP tunnel session multiplexer
+- [2026-07-06 11:39] feat: add dynamic MTU discovery and packet fragmentation handling
