@@ -102,3 +102,4 @@
 - [2026-07-05 21:26] feat: implement async tokio TCP/UDP tunnel session multiplexer
 - [2026-07-06 11:39] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-06 14:08] feat: add dynamic MTU discovery and packet fragmentation handling
+- [2026-07-06 17:14] feat: add dynamic MTU discovery and packet fragmentation handling
