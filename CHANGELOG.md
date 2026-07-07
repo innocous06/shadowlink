@@ -109,3 +109,4 @@
 - [2026-07-07 16:35] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-07 18:36] refactor: optimize packet routing with zero-copy byte slice buffers
 - [2026-07-07 20:17] test: add fuzzing and integration test suite for packet framing
+- [2026-07-07 21:52] feat: implement async tokio TCP/UDP tunnel session multiplexer
