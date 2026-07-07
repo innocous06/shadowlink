@@ -108,3 +108,4 @@
 - [2026-07-07 15:51] refactor: modularize tunnel engine into core and client crates
 - [2026-07-07 16:35] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-07 18:36] refactor: optimize packet routing with zero-copy byte slice buffers
+- [2026-07-07 20:17] test: add fuzzing and integration test suite for packet framing
