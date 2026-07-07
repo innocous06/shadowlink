@@ -105,3 +105,4 @@
 - [2026-07-06 17:14] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-06 18:00] feat: implement async tokio TCP/UDP tunnel session multiplexer
 - [2026-07-07 12:06] fix: handle broken pipe gracefully on unexpected peer disconnect
+- [2026-07-07 15:51] refactor: modularize tunnel engine into core and client crates
