@@ -112,3 +112,4 @@
 - [2026-07-07 21:52] feat: implement async tokio TCP/UDP tunnel session multiplexer
 - [2026-07-08 10:43] perf: reduce lock contention using atomic connection counters
 - [2026-07-08 13:59] refactor: optimize packet routing with zero-copy byte slice buffers
+- [2026-07-08 14:33] fix: resolve memory leak in session cleanup worker loop
