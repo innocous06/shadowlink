@@ -117,3 +117,4 @@
 - [2026-07-08 18:35] feat: add Android JNI FFI bindings for VPN service integration
 - [2026-07-08 19:51] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-08 20:24] fix: resolve memory leak in session cleanup worker loop
+- [2026-07-08 22:49] fix: handle broken pipe gracefully on unexpected peer disconnect
