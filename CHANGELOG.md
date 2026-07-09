@@ -120,3 +120,4 @@
 - [2026-07-08 22:49] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-07-09 07:56] test: add fuzzing and integration test suite for packet framing
 - [2026-07-09 11:35] docs: add architecture diagram and Android build guide
+- [2026-07-09 14:05] docs: write technical whitepaper on proxy protocol internals
