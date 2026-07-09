@@ -119,3 +119,4 @@
 - [2026-07-08 20:24] fix: resolve memory leak in session cleanup worker loop
 - [2026-07-08 22:49] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-07-09 07:56] test: add fuzzing and integration test suite for packet framing
+- [2026-07-09 11:35] docs: add architecture diagram and Android build guide
