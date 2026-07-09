@@ -122,3 +122,4 @@
 - [2026-07-09 11:35] docs: add architecture diagram and Android build guide
 - [2026-07-09 14:05] docs: write technical whitepaper on proxy protocol internals
 - [2026-07-09 14:38] feat: implement async tokio TCP/UDP tunnel session multiplexer
+- [2026-07-09 15:06] fix: resolve memory leak in session cleanup worker loop
