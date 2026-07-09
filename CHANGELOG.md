@@ -124,3 +124,4 @@
 - [2026-07-09 14:38] feat: implement async tokio TCP/UDP tunnel session multiplexer
 - [2026-07-09 15:06] fix: resolve memory leak in session cleanup worker loop
 - [2026-07-09 15:27] feat: add dynamic MTU discovery and packet fragmentation handling
+- [2026-07-09 16:57] feat: add connection metrics and latency telemetry exporter
