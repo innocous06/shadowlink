@@ -134,3 +134,4 @@
 - [2026-07-10 15:42] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-07-10 16:24] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-10 17:03] test: add fuzzing and integration test suite for packet framing
+- [2026-07-10 19:24] feat: add Android JNI FFI bindings for VPN service integration
