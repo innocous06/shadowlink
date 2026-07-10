@@ -127,3 +127,4 @@
 - [2026-07-09 16:57] feat: add connection metrics and latency telemetry exporter
 - [2026-07-09 18:45] refactor: modularize tunnel engine into core and client crates
 - [2026-07-10 10:00] chore: update Cargo.toml dependencies and optimize release profile
+- [2026-07-10 10:03] chore: update Cargo.toml dependencies and optimize release profile
