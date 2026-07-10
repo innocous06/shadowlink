@@ -132,3 +132,4 @@
 - [2026-07-10 13:41] feat: add connection metrics and latency telemetry exporter
 - [2026-07-10 14:15] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-10 15:42] fix: handle broken pipe gracefully on unexpected peer disconnect
+- [2026-07-10 16:24] feat: add dynamic MTU discovery and packet fragmentation handling
