@@ -129,3 +129,4 @@
 - [2026-07-10 10:00] chore: update Cargo.toml dependencies and optimize release profile
 - [2026-07-10 10:03] chore: update Cargo.toml dependencies and optimize release profile
 - [2026-07-10 13:35] fix: handle broken pipe gracefully on unexpected peer disconnect
+- [2026-07-10 13:41] feat: add connection metrics and latency telemetry exporter
