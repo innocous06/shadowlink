@@ -137,3 +137,4 @@
 - [2026-07-10 19:24] feat: add Android JNI FFI bindings for VPN service integration
 - [2026-07-11 16:16] fix: resolve memory leak in session cleanup worker loop
 - [2026-07-11 16:47] fix: resolve memory leak in session cleanup worker loop
+- [2026-07-11 18:27] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
