@@ -138,3 +138,4 @@
 - [2026-07-11 16:16] fix: resolve memory leak in session cleanup worker loop
 - [2026-07-11 16:47] fix: resolve memory leak in session cleanup worker loop
 - [2026-07-11 18:27] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
+- [2026-07-11 18:42] feat: add connection metrics and latency telemetry exporter
