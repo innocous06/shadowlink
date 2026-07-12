@@ -146,3 +146,4 @@
 - [2026-07-12 14:06] refactor: modularize tunnel engine into core and client crates
 - [2026-07-12 20:04] feat: add connection metrics and latency telemetry exporter
 - [2026-07-12 20:36] feat: add dynamic MTU discovery and packet fragmentation handling
+- [2026-07-12 21:42] feat: add dynamic MTU discovery and packet fragmentation handling
