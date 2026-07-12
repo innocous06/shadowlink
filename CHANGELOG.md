@@ -142,3 +142,4 @@
 - [2026-07-11 20:01] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-07-12 09:40] test: add fuzzing and integration test suite for packet framing
 - [2026-07-12 13:20] refactor: modularize tunnel engine into core and client crates
+- [2026-07-12 13:35] feat: implement async tokio TCP/UDP tunnel session multiplexer
