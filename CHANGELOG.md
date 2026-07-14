@@ -151,3 +151,4 @@
 - [2026-07-14 13:33] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-07-14 17:31] feat: add connection metrics and latency telemetry exporter
 - [2026-07-14 17:33] test: add fuzzing and integration test suite for packet framing
+- [2026-07-14 17:49] fix: resolve memory leak in session cleanup worker loop
