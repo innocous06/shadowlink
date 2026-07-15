@@ -153,3 +153,4 @@
 - [2026-07-14 17:33] test: add fuzzing and integration test suite for packet framing
 - [2026-07-14 17:49] fix: resolve memory leak in session cleanup worker loop
 - [2026-07-14 19:33] chore: update Cargo.toml dependencies and optimize release profile
+- [2026-07-15 11:52] refactor: optimize packet routing with zero-copy byte slice buffers
