@@ -163,3 +163,4 @@
 - [2026-07-18 13:57] chore: update Cargo.toml dependencies and optimize release profile
 - [2026-07-18 14:04] test: add fuzzing and integration test suite for packet framing
 - [2026-07-18 14:33] chore: update Cargo.toml dependencies and optimize release profile
+- [2026-07-18 15:17] refactor: modularize tunnel engine into core and client crates
