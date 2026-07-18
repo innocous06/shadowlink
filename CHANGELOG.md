@@ -161,3 +161,4 @@
 - [2026-07-18 12:04] feat: add Android JNI FFI bindings for VPN service integration
 - [2026-07-18 12:55] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-07-18 13:57] chore: update Cargo.toml dependencies and optimize release profile
+- [2026-07-18 14:04] test: add fuzzing and integration test suite for packet framing
