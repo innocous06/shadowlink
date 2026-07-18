@@ -156,3 +156,4 @@
 - [2026-07-15 11:52] refactor: optimize packet routing with zero-copy byte slice buffers
 - [2026-07-17 10:35] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-07-18 10:08] fix: resolve memory leak in session cleanup worker loop
+- [2026-07-18 10:11] feat: implement async tokio TCP/UDP tunnel session multiplexer
