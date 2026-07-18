@@ -159,3 +159,4 @@
 - [2026-07-18 10:11] feat: implement async tokio TCP/UDP tunnel session multiplexer
 - [2026-07-18 11:49] fix: resolve memory leak in session cleanup worker loop
 - [2026-07-18 12:04] feat: add Android JNI FFI bindings for VPN service integration
+- [2026-07-18 12:55] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
