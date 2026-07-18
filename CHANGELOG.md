@@ -167,3 +167,4 @@
 - [2026-07-18 15:18] feat: implement async tokio TCP/UDP tunnel session multiplexer
 - [2026-07-18 16:14] feat: add Android JNI FFI bindings for VPN service integration
 - [2026-07-18 19:31] feat: implement async tokio TCP/UDP tunnel session multiplexer
+- [2026-07-18 20:25] chore: update Cargo.toml dependencies and optimize release profile
