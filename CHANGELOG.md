@@ -174,3 +174,4 @@
 - [2026-07-22 19:04] feat: add connection metrics and latency telemetry exporter
 - [2026-07-22 20:09] feat: add connection metrics and latency telemetry exporter
 - [2026-07-22 21:06] chore: update Cargo.toml dependencies and optimize release profile
+- [2026-07-22 23:43] feat: add Android JNI FFI bindings for VPN service integration
