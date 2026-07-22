@@ -170,3 +170,4 @@
 - [2026-07-18 20:25] chore: update Cargo.toml dependencies and optimize release profile
 - [2026-07-18 21:15] perf: reduce lock contention using atomic connection counters
 - [2026-07-20 21:07] feat: implement async tokio TCP/UDP tunnel session multiplexer
+- [2026-07-22 17:12] refactor: modularize tunnel engine into core and client crates
