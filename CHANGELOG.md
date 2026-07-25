@@ -185,3 +185,4 @@
 - [2026-07-25 14:30] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-07-25 15:07] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-07-25 16:14] fix: resolve memory leak in session cleanup worker loop
+- [2026-07-25 17:10] chore: update Cargo.toml dependencies and optimize release profile
