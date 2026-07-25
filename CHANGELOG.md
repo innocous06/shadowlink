@@ -177,3 +177,4 @@
 - [2026-07-22 23:43] feat: add Android JNI FFI bindings for VPN service integration
 - [2026-07-24 14:57] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-07-24 17:31] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
+- [2026-07-25 09:02] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
