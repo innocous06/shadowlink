@@ -180,3 +180,4 @@
 - [2026-07-25 09:02] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-07-25 09:14] refactor: optimize packet routing with zero-copy byte slice buffers
 - [2026-07-25 11:23] feat: add dynamic MTU discovery and packet fragmentation handling
+- [2026-07-25 11:47] fix: handle broken pipe gracefully on unexpected peer disconnect
