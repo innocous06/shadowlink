@@ -188,3 +188,4 @@
 - [2026-07-25 17:10] chore: update Cargo.toml dependencies and optimize release profile
 - [2026-07-25 18:37] docs: add architecture diagram and Android build guide
 - [2026-07-25 19:36] test: add fuzzing and integration test suite for packet framing
+- [2026-07-25 20:26] fix: resolve memory leak in session cleanup worker loop
