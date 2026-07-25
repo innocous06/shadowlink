@@ -183,3 +183,4 @@
 - [2026-07-25 11:47] fix: handle broken pipe gracefully on unexpected peer disconnect
 - [2026-07-25 13:13] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-07-25 14:30] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
+- [2026-07-25 15:07] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
