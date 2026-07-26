@@ -190,3 +190,4 @@
 - [2026-07-25 19:36] test: add fuzzing and integration test suite for packet framing
 - [2026-07-25 20:26] fix: resolve memory leak in session cleanup worker loop
 - [2026-07-25 21:06] perf: reduce lock contention using atomic connection counters
+- [2026-07-26 09:03] refactor: modularize tunnel engine into core and client crates
