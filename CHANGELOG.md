@@ -192,3 +192,4 @@
 - [2026-07-25 21:06] perf: reduce lock contention using atomic connection counters
 - [2026-07-26 09:03] refactor: modularize tunnel engine into core and client crates
 - [2026-07-26 13:30] refactor: modularize tunnel engine into core and client crates
+- [2026-07-26 15:40] docs: write technical whitepaper on proxy protocol internals
