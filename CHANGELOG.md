@@ -203,3 +203,4 @@
 - [2026-07-28 17:26] refactor: modularize tunnel engine into core and client crates
 - [2026-07-28 18:36] refactor: modularize tunnel engine into core and client crates
 - [2026-07-28 19:37] test: add fuzzing and integration test suite for packet framing
+- [2026-07-28 21:31] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
