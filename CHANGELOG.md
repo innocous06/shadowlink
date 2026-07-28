@@ -195,3 +195,4 @@
 - [2026-07-26 15:40] docs: write technical whitepaper on proxy protocol internals
 - [2026-07-27 10:59] perf: reduce lock contention using atomic connection counters
 - [2026-07-27 12:02] fix: resolve memory leak in session cleanup worker loop
+- [2026-07-28 10:20] fix: handle broken pipe gracefully on unexpected peer disconnect
