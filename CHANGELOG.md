@@ -200,3 +200,4 @@
 - [2026-07-28 15:57] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-07-28 17:03] docs: add architecture diagram and Android build guide
 - [2026-07-28 17:14] perf: reduce lock contention using atomic connection counters
+- [2026-07-28 17:26] refactor: modularize tunnel engine into core and client crates
