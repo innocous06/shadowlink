@@ -196,3 +196,4 @@
 - [2026-07-27 10:59] perf: reduce lock contention using atomic connection counters
 - [2026-07-27 12:02] fix: resolve memory leak in session cleanup worker loop
 - [2026-07-28 10:20] fix: handle broken pipe gracefully on unexpected peer disconnect
+- [2026-07-28 10:47] feat: add dynamic MTU discovery and packet fragmentation handling
