@@ -1,0 +1,9 @@
+[package]
+name = "certgen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+rcgen = "0.14.8"

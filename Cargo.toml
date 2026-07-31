@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/shadowlink-core",
+    "crates/shadowlink-server",
+    "crates/shadowlink-client",
+    "crates/shadowlink-keygen", "certgen",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["ShadowLink"]
+
+[workspace.dependencies]
+# Crypto - battle-tested, no custom crypto
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+chacha20poly1305 = "0.10"
+blake2 = "0.10"
+argon2 = "0.5"
+rand = "0.8"
+
+# Networking
+tokio = { version = "1", features = ["full"] }
+tokio-rustls = "0.26"
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pemfile = "2"
+webpki-roots = "0.26"
+
+# Serialization & Config
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+base64 = "0.22"
+
+# Logging (optional, can be fully disabled)
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Misc
+bytes = "1"
+zeroize = { version = "1", features = ["derive"] }
