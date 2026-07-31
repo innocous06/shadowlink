@@ -1,0 +1,27 @@
+# Build and release folders
+target/
+build/
+.gradle/
+*.apk
+*.aab
+wintun_extracted/
+wintun.zip
+wintun.dll
+shadowlink-android/app/build/
+shadowlink-android/.gradle/
+
+# IntelliJ IDEA / Android Studio
+.idea/
+*.iml
+local.properties
+
+# Secrets
+*.key
+*.key.json
+swe2.key
+client-config.toml
+server-config.toml
+test-client.toml
+test-server.toml
+test-key.pem
+test-cert.pem

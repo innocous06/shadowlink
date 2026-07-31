@@ -1,0 +1,6 @@
+listen_addr = "0.0.0.0:443"
+tls_cert_path = "/etc/shadowlink/cert.pem"
+tls_key_path = "/etc/shadowlink/key.pem"
+server_key_path = "/etc/shadowlink/server.key.json"
+allowed_clients = []
+enable_logging = true

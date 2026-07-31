@@ -1,0 +1,32 @@
+# ShadowLink Client Configuration
+# ===============================
+
+# Your Oracle VPS IP address and port
+server_addr = "YOUR_VPS_IP_HERE:443"
+
+# SNI Hostname for TLS Camouflage (must match a real website)
+# This fools DPI into thinking you are browsing Microsoft
+sni_hostname = "www.google.com"
+
+# The local SOCKS5 proxy port (Configure Windows/Browser to use this)
+socks5_listen = "127.0.0.1:1080"
+
+# Path to your encrypted client key
+client_key_path = "client.key.json"
+
+# [SECURITY] DO NOT put your passphrase here unless you are okay with it being in plaintext.
+# It's safer to leave this commented out and let the CLI prompt you for it when it starts.
+# client_key_passphrase = "your_secret_passphrase"
+
+# The SERVER'S public key (so the client knows it's talking to your real server)
+server_public_key = "YOUR_SERVER_PUBLIC_KEY_HERE"
+
+# TLS Verification
+# False = Ignore certificate errors (needed if using self-signed certs on the VPS)
+verify_tls_cert = false
+
+# Other Settings
+enable_logging = true
+auto_reconnect = true
+enable_full_vpn_mode = true
+reconnect_delay_secs = 3

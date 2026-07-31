@@ -1,0 +1,26 @@
+# ShadowLink Server Configuration
+# ================================
+
+# Listen on all interfaces, port 443 (standard HTTPS)
+listen_addr = "0.0.0.0:443"
+
+# TLS certificate (for HTTPS camouflage)
+# Note: You need to generate these on your VPS or use Let's Encrypt
+tls_cert_path = "/etc/shadowlink/cert.pem"
+tls_key_path = "/etc/shadowlink/key.pem"
+
+# Server identity key 
+server_key_path = "/etc/shadowlink/server.key.json"
+
+# AUTHORIZED CLIENTS
+# Only clients with these public keys will be allowed to connect.
+# Unrecognized connections will be served the decoy website.
+allowed_clients = [
+    "YOUR_CLIENT_PUBLIC_KEY_HERE",
+]
+
+# Set to false for maximum anonymity (no logs at all)
+enable_logging = true
+
+# DNS servers for resolving domains (server-side, prevents client DNS leaks)
+dns_servers = ["1.1.1.1:53", "1.0.0.1:53", "8.8.8.8:53", "8.8.4.4:53"]

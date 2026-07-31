@@ -1,0 +1,35 @@
+[package]
+name = "shadowlink-core"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+x25519-dalek = { workspace = true }
+chacha20poly1305 = { workspace = true }
+blake2 = { workspace = true }
+argon2 = { workspace = true }
+rand = { workspace = true }
+tokio = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+webpki-roots = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+base64 = { workspace = true }
+tracing = { workspace = true }
+bytes = { workspace = true }
+zeroize = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+jni = "0.21.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59.0", features = ["Win32_System_LibraryLoader", "Win32_Foundation", "Win32_System_Threading"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+libc = "0.2"
