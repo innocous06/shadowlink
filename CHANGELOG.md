@@ -210,3 +210,4 @@
 - [2026-07-31 17:20] refactor: modularize tunnel engine into core and client crates
 - [2026-07-31 17:25] feat: implement async tokio TCP/UDP tunnel session multiplexer
 - [2026-07-31 19:47] feat: add connection metrics and latency telemetry exporter
+- [2026-08-01 09:47] docs: add architecture diagram and Android build guide
