@@ -216,3 +216,4 @@
 - [2026-08-02 09:36] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-08-02 10:15] refactor: modularize tunnel engine into core and client crates
 - [2026-08-02 16:05] perf: reduce lock contention using atomic connection counters
+- [2026-08-02 20:14] refactor: optimize packet routing with zero-copy byte slice buffers
