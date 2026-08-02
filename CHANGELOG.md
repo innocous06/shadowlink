@@ -10,3 +10,4 @@
 - [2026-07-20 18:24] fix: handle unexpected broken pipe on mobile network handover
 - [2026-07-24 13:05] test: add fuzz testing suite for malicious packet frame handling
 - [2026-07-29 11:35] docs: write proxy protocol specification and crypto architecture whitepaper
+- [2026-08-02 14:54] chore: configure Cargo.toml workspace dependencies and release flags
