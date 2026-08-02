@@ -213,3 +213,4 @@
 - [2026-08-01 09:47] docs: add architecture diagram and Android build guide
 - [2026-08-01 16:02] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-08-01 20:47] chore: update Cargo.toml dependencies and optimize release profile
+- [2026-08-02 09:36] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
