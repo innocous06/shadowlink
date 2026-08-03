@@ -220,3 +220,4 @@
 - [2026-08-03 09:18] chore: update Cargo.toml dependencies and optimize release profile
 - [2026-08-03 12:04] refactor: optimize packet routing with zero-copy byte slice buffers
 - [2026-08-03 13:55] fix: resolve memory leak in session cleanup worker loop
+- [2026-08-03 21:51] feat: add connection metrics and latency telemetry exporter
