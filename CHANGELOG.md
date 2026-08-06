@@ -221,3 +221,4 @@
 - [2026-08-03 12:04] refactor: optimize packet routing with zero-copy byte slice buffers
 - [2026-08-03 13:55] fix: resolve memory leak in session cleanup worker loop
 - [2026-08-03 21:51] feat: add connection metrics and latency telemetry exporter
+- [2026-08-06 10:19] feat: add connection metrics and latency telemetry exporter
