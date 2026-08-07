@@ -227,3 +227,4 @@
 - [2026-08-06 13:58] feat: add connection metrics and latency telemetry exporter
 - [2026-08-06 21:37] docs: add architecture diagram and Android build guide
 - [2026-08-07 15:23] feat: add Android JNI FFI bindings for VPN service integration
+- [2026-08-07 15:36] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
