@@ -229,3 +229,4 @@
 - [2026-08-07 15:23] feat: add Android JNI FFI bindings for VPN service integration
 - [2026-08-07 15:36] feat: add cryptographic handshake with ChaCha20-Poly1305 AEAD cipher
 - [2026-08-08 13:46] feat: add dynamic MTU discovery and packet fragmentation handling
+- [2026-08-08 13:52] docs: add architecture diagram and Android build guide
