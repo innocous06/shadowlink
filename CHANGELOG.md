@@ -231,3 +231,4 @@
 - [2026-08-08 13:46] feat: add dynamic MTU discovery and packet fragmentation handling
 - [2026-08-08 13:52] docs: add architecture diagram and Android build guide
 - [2026-08-08 15:36] fix: resolve memory leak in session cleanup worker loop
+- [2026-08-08 17:40] chore: update Cargo.toml dependencies and optimize release profile
