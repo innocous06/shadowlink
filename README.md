@@ -49,4 +49,4 @@ cargo run --bin shadowlink-client -- -c client-config.toml
 
 Released under the [MIT License](LICENSE).
 
-Copyright (c) 2026 innocous. All rights reserved.
+Copyright (c) 2026 innocous06. All rights reserved.
