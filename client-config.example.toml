@@ -30,3 +30,6 @@ enable_logging = true
 auto_reconnect = true
 enable_full_vpn_mode = true
 reconnect_delay_secs = 3
+
+# Buffer capacity for async stream frames
+buffer_capacity = 65536
