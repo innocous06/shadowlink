@@ -24,3 +24,6 @@ enable_logging = true
 
 # DNS servers for resolving domains (server-side, prevents client DNS leaks)
 dns_servers = ["1.1.1.1:53", "1.0.0.1:53", "8.8.8.8:53", "8.8.4.4:53"]
+
+# Maximum handshake timeout in milliseconds
+handshake_timeout_ms = 5000
