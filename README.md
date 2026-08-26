@@ -33,6 +33,12 @@ The project is structured as a unified Cargo workspace:
 - **Networking:** Linux TUN, Wintun FFI, SOCKS5 Proxy, Custom DNS Resolver
 - **Mobile Integration:** Android NDK, JNI, Kotlin, Jetpack Compose
 
+## Supported Target Architectures
+
+- `x86_64-unknown-linux-gnu` (Linux Servers / OCI VPS)
+- `x86_64-pc-windows-msvc` (Windows Desktop via Wintun)
+- `aarch64-linux-android` (Android via JNI & `libshadowlink_core.so`)
+
 ## Usage
 
 `ash
