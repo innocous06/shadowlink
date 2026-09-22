@@ -32,9 +32,27 @@ pub mod android_ffi {
             .build()
             .unwrap();
         
-        let server_addr: String = env.get_string(&server_ip_port).unwrap().into();
-        let client_priv_b64: String = env.get_string(&client_private_key_b64).unwrap().into();
-        let server_pub_b64: String = env.get_string(&server_public_key_b64).unwrap().into();
+        let server_addr: String = match env.get_string(&server_ip_port) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                error!("Failed to get server address string: {}", e);
+                return;
+            }
+        };
+        let client_priv_b64: String = match env.get_string(&client_private_key_b64) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                error!("Failed to get client private key string: {}", e);
+                return;
+            }
+        };
+        let server_pub_b64: String = match env.get_string(&server_public_key_b64) {
+            Ok(s) => s.into(),
+            Err(e) => {
+                error!("Failed to get server public key string: {}", e);
+                return;
+            }
+        };
         let fd = tun_fd as RawFd;
 
         rt.block_on(async {
@@ -55,15 +73,41 @@ pub mod android_ffi {
             info!("Starting Android TUN Loop on fd {}", fd);
 
             use base64::Engine;
-            let client_priv_bytes = base64::engine::general_purpose::STANDARD.decode(&client_priv_b64).unwrap();
-            let client_kp = KeyPair::from_secret_bytes(client_priv_bytes.try_into().unwrap());
-            let server_pk = KeyPair::parse_public_key(&server_pub_b64).unwrap();
+            let client_priv_bytes = match base64::engine::general_purpose::STANDARD.decode(&client_priv_b64) {
+                Ok(b) => b,
+                Err(e) => {
+                    error!("Invalid base64 client key: {}", e);
+                    return;
+                }
+            };
+            let client_priv_arr: [u8; 32] = match client_priv_bytes.try_into() {
+                Ok(b) => b,
+                Err(_) => {
+                    error!("Client private key must be 32 bytes");
+                    return;
+                }
+            };
+            let client_kp = KeyPair::from_secret_bytes(client_priv_arr);
+            let server_pk = match KeyPair::parse_public_key(&server_pub_b64) {
+                Ok(pk) => pk,
+                Err(e) => {
+                    error!("Invalid server public key: {}", e);
+                    return;
+                }
+            };
 
             // Connect TCP to VPS
-            let tcp_stream = TcpStream::connect(&server_addr).await.expect("Failed to connect to VPS");
+            let tcp_stream = match TcpStream::connect(&server_addr).await {
+                Ok(s) => s,
+                Err(e) => {
+                    error!("Failed to connect to VPS at {}: {}", server_addr, e);
+                    return;
+                }
+            };
             let _ = tcp_stream.set_nodelay(true);
 
-            let sni_hostname = "www.google.com";
+            // Derive SNI hostname from server address or fallback to decoy
+            let sni_hostname = server_addr.split(':').next().unwrap_or("www.google.com");
             
             let mut root_cert_store = rustls::RootCertStore::empty();
             root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
@@ -72,7 +116,13 @@ pub mod android_ffi {
                 .with_no_client_auth();
             let connector = tokio_rustls::TlsConnector::from(std::sync::Arc::new(config));
             
-            let mut tls_stream = tls_camouflage::tls_connect(tcp_stream, &connector, sni_hostname).await.expect("TLS failed");
+            let mut tls_stream = match tls_camouflage::tls_connect(tcp_stream, &connector, sni_hostname).await {
+                Ok(s) => s,
+                Err(e) => {
+                    error!("TLS connect failed: {}", e);
+                    return;
+                }
+            };
 
             // Perform ShadowLink handshake
             let handshake_result = match handshake::client_handshake(&mut tls_stream, &client_kp, &server_pk).await {
@@ -83,7 +133,13 @@ pub mod android_ffi {
                 }
             };
 
-            let session = EncryptedSession::new(tls_stream, handshake_result).unwrap();
+            let session = match EncryptedSession::new(tls_stream, handshake_result) {
+                Ok(s) => s,
+                Err(e) => {
+                    error!("Failed to initialize encrypted session: {}", e);
+                    return;
+                }
+            };
             let (mut session_read, mut session_write) = session.into_split();
 
             let (tun_tx, mut tun_rx) = mpsc::unbounded_channel::<Vec<u8>>();
@@ -96,8 +152,11 @@ pub mod android_ffi {
                             if let Ok(msg) = TunnelMessage::parse(&data) {
                                 if let TunnelMessage::RawPacket(pkt) = msg {
                                     if let Ok(mut guard) = async_fd_clone.writable().await {
-                                        unsafe {
-                                            libc::write(fd, pkt.data.as_ptr() as *const libc::c_void, pkt.data.len());
+                                        let res = unsafe {
+                                            libc::write(fd, pkt.data.as_ptr() as *const libc::c_void, pkt.data.len())
+                                        };
+                                        if res < 0 {
+                                            debug!("Android TUN write error: errno {}", unsafe { *libc::__errno_location() });
                                         }
                                         guard.clear_ready();
                                     }
@@ -119,13 +178,24 @@ pub mod android_ffi {
             tokio::spawn(async move {
                 let mut buf = vec![0u8; 65535];
                 loop {
-                    let mut guard = async_fd.readable().await.unwrap();
+                    let mut guard = match async_fd.readable().await {
+                        Ok(g) => g,
+                        Err(e) => {
+                            error!("AsyncFd readable error: {}", e);
+                            break;
+                        }
+                    };
                     let n = unsafe {
                         libc::read(fd_copy, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
                     };
                     if n > 0 {
                         let data = buf[..n as usize].to_vec();
-                        tun_tx.send(data).unwrap();
+                        if tun_tx.send(data).is_err() {
+                            break;
+                        }
+                    } else if n < 0 {
+                        debug!("Android TUN read error: errno {}", unsafe { *libc::__errno_location() });
+                        break;
                     }
                     guard.clear_ready();
                 }

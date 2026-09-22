@@ -15,15 +15,18 @@
 //! ```
 
 use anyhow::{anyhow, Context, Result};
+use blake2::{Blake2s256, Digest};
 use chacha20poly1305::{
     aead::{Aead, KeyInit},
     ChaCha20Poly1305,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
-use zeroize::Zeroize;
+use tracing::debug;
+use zeroize::{Zeroize, Zeroizing};
 
-use super::frame::{self, FrameReader, FrameWriter, MAX_FRAME_PAYLOAD};
+use super::frame::{FrameReader, FrameWriter, MAX_FRAME_PAYLOAD};
 use super::handshake::HandshakeResult;
+use crate::obfuscation::padding::{pad_data, unpad_data, PaddingConfig};
 
 /// AEAD tag overhead (16 bytes for Poly1305)
 const AEAD_TAG_SIZE: usize = 16;
@@ -32,10 +35,52 @@ const NONCE_SIZE: usize = 12;
 /// Maximum plaintext per frame (accounting for nonce + tag)
 pub const MAX_PLAINTEXT_PER_FRAME: usize = MAX_FRAME_PAYLOAD - NONCE_SIZE - AEAD_TAG_SIZE;
 
+pub const REKEY_THRESHOLD_FRAMES: u64 = 500_000;
+pub const REKEY_INTERVAL_FRAMES: u64 = 1_000_000;
+
 /// Special frame types for control messages
 const FRAME_TYPE_DATA: u8 = 0x00;
 const FRAME_TYPE_KEEPALIVE: u8 = 0x01;
 const FRAME_TYPE_CLOSE: u8 = 0x02;
+const FRAME_TYPE_DUMMY: u8 = 0x03;
+const FRAME_TYPE_REKEY: u8 = 0x04;
+
+fn ratchet_key(key: &mut [u8; 32]) {
+    let mut hasher = Blake2s256::new();
+    hasher.update(b"ShadowLink-v1-ratchet");
+    hasher.update(&key[..]);
+    let result = hasher.finalize();
+    key.copy_from_slice(&result);
+}
+
+struct ReplayWindow {
+    highest: u64,
+    bitmap: u64, // bit i set = nonce (highest - i) was received
+}
+
+impl ReplayWindow {
+    fn new() -> Self { Self { highest: 0, bitmap: 0 } }
+    
+    fn check_and_advance(&mut self, nonce: u64) -> bool {
+        if nonce > self.highest {
+            let shift = nonce - self.highest;
+            if shift >= 64 {
+                self.bitmap = 1;
+            } else {
+                self.bitmap = (self.bitmap << shift) | 1;
+            }
+            self.highest = nonce;
+            true
+        } else {
+            let offset = self.highest - nonce;
+            if offset >= 64 { return false; } // too old
+            let bit = 1u64 << offset;
+            if self.bitmap & bit != 0 { return false; } // duplicate
+            self.bitmap |= bit;
+            true
+        }
+    }
+}
 
 /// An encrypted session over a framed TCP stream.
 ///
@@ -47,8 +92,10 @@ pub struct EncryptedSession<S: AsyncRead + AsyncWrite + Unpin> {
     writer: FrameWriter<tokio::io::WriteHalf<S>>,
     send_cipher: ChaCha20Poly1305,
     recv_cipher: ChaCha20Poly1305,
+    send_key: Zeroizing<[u8; 32]>,
+    recv_key: Zeroizing<[u8; 32]>,
     send_nonce_counter: u64,
-    recv_nonce_counter: u64,
+    replay_window: ReplayWindow,
     closed: bool,
 }
 
@@ -62,6 +109,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin> EncryptedSession<S> {
         let recv_cipher = ChaCha20Poly1305::new_from_slice(&handshake.recv_key)
             .map_err(|e| anyhow!("Failed to init recv cipher: {}", e))?;
 
+        let send_key = Zeroizing::new(handshake.send_key);
+        let recv_key = Zeroizing::new(handshake.recv_key);
+
         // Zeroize the keys now that ciphers are initialized
         handshake.send_key.zeroize();
         handshake.recv_key.zeroize();
@@ -73,8 +123,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin> EncryptedSession<S> {
             writer: FrameWriter::new(write_half),
             send_cipher,
             recv_cipher,
+            send_key,
+            recv_key,
             send_nonce_counter: 0,
-            recv_nonce_counter: 0,
+            replay_window: ReplayWindow::new(),
             closed: false,
         })
     }
@@ -95,16 +147,67 @@ impl<S: AsyncRead + AsyncWrite + Unpin> EncryptedSession<S> {
             EncryptedSessionReadHalf {
                 reader: self.reader,
                 recv_cipher: self.recv_cipher,
-                recv_nonce_counter: self.recv_nonce_counter,
+                recv_key: self.recv_key,
+                replay_window: self.replay_window,
                 closed: self.closed,
             },
             EncryptedSessionWriteHalf {
                 writer: self.writer,
                 send_cipher: self.send_cipher,
+                send_key: self.send_key,
                 send_nonce_counter: self.send_nonce_counter,
                 closed: self.closed,
             },
         )
+    }
+
+    /// Rotate the send key and send an in-band REKEY frame to the peer.
+    pub async fn ratchet_send(&mut self) -> Result<()> {
+        if self.closed {
+            return Err(anyhow!("Session is closed"));
+        }
+        let plaintext = vec![FRAME_TYPE_REKEY];
+        let encrypted = self.encrypt_frame(&plaintext)?;
+        self.writer
+            .write_frame(&encrypted)
+            .await
+            .context("Failed to send rekey frame")?;
+        ratchet_key(&mut self.send_key);
+        self.send_cipher = ChaCha20Poly1305::new_from_slice(&*self.send_key)
+            .map_err(|e| anyhow!("Failed to ratchet send cipher: {}", e))?;
+        self.send_nonce_counter = 0;
+        debug!("Ratchet: send key rotated, counter reset to 0");
+        Ok(())
+    }
+
+    /// Rotate the recv key upon receiving an in-band REKEY frame from the peer.
+    pub fn ratchet_recv(&mut self) -> Result<()> {
+        ratchet_key(&mut self.recv_key);
+        self.recv_cipher = ChaCha20Poly1305::new_from_slice(&*self.recv_key)
+            .map_err(|e| anyhow!("Failed to ratchet recv cipher: {}", e))?;
+        self.replay_window = ReplayWindow::new();
+        debug!("Ratchet: recv key rotated, replay window reset");
+        Ok(())
+    }
+
+    /// Send a dummy frame with randomized length and content for traffic shaping.
+    pub async fn send_dummy(&mut self) -> Result<()> {
+        if self.closed {
+            return Err(anyhow!("Session is closed"));
+        }
+        if self.send_nonce_counter >= REKEY_THRESHOLD_FRAMES {
+            self.ratchet_send().await?;
+        }
+        let dummy = crate::obfuscation::padding::generate_dummy_packet(&PaddingConfig::default());
+        let mut plaintext = Vec::with_capacity(1 + dummy.len());
+        plaintext.push(FRAME_TYPE_DUMMY);
+        plaintext.extend_from_slice(&dummy);
+
+        let encrypted = self.encrypt_frame(&plaintext)?;
+        self.writer
+            .write_frame(&encrypted)
+            .await
+            .context("Failed to send dummy frame")
     }
 
     /// Send encrypted data to the peer.
@@ -115,17 +218,26 @@ impl<S: AsyncRead + AsyncWrite + Unpin> EncryptedSession<S> {
         if self.closed {
             return Err(anyhow!("Session is closed"));
         }
+        if self.send_nonce_counter >= REKEY_THRESHOLD_FRAMES {
+            self.ratchet_send().await?;
+        }
 
         if data.is_empty() {
             return Ok(());
         }
 
-        // Chunk the data if necessary
-        for chunk in data.chunks(MAX_PLAINTEXT_PER_FRAME - 1) {
+        // Chunk the data if necessary, reserving space for padding (~300 bytes)
+        let pad_config = PaddingConfig::default();
+        let chunk_size = MAX_PLAINTEXT_PER_FRAME.saturating_sub(300).max(1);
+        for chunk in data.chunks(chunk_size) {
+            if self.send_nonce_counter >= REKEY_THRESHOLD_FRAMES {
+                self.ratchet_send().await?;
+            }
+            let padded_chunk = pad_data(chunk, &pad_config);
             // 1 byte for frame type
-            let mut plaintext = Vec::with_capacity(1 + chunk.len());
+            let mut plaintext = Vec::with_capacity(1 + padded_chunk.len());
             plaintext.push(FRAME_TYPE_DATA);
-            plaintext.extend_from_slice(chunk);
+            plaintext.extend_from_slice(&padded_chunk);
 
             let encrypted = self.encrypt_frame(&plaintext)?;
             self.writer
@@ -166,10 +278,15 @@ impl<S: AsyncRead + AsyncWrite + Unpin> EncryptedSession<S> {
 
             match frame_type {
                 FRAME_TYPE_DATA => {
-                    return Ok(Some(payload.to_vec()));
+                    let unpadded = unpad_data(payload).map_err(|e| anyhow!("Unpad failed: {}", e))?;
+                    return Ok(Some(unpadded));
                 }
-                FRAME_TYPE_KEEPALIVE => {
-                    // Silently consume keepalive frames
+                FRAME_TYPE_KEEPALIVE | FRAME_TYPE_DUMMY => {
+                    // Silently consume keepalive and dummy frames
+                    continue;
+                }
+                FRAME_TYPE_REKEY => {
+                    self.ratchet_recv()?;
                     continue;
                 }
                 FRAME_TYPE_CLOSE => {
@@ -187,6 +304,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin> EncryptedSession<S> {
     pub async fn send_keepalive(&mut self) -> Result<()> {
         if self.closed {
             return Err(anyhow!("Session is closed"));
+        }
+        if self.send_nonce_counter >= REKEY_THRESHOLD_FRAMES {
+            self.ratchet_send().await?;
         }
 
         let plaintext = vec![FRAME_TYPE_KEEPALIVE];
@@ -235,24 +355,18 @@ impl<S: AsyncRead + AsyncWrite + Unpin> EncryptedSession<S> {
         if frame_data.len() < NONCE_SIZE + AEAD_TAG_SIZE {
             return Err(anyhow!("Encrypted frame too short"));
         }
-
-        let received_nonce = &frame_data[..NONCE_SIZE];
+        let received_nonce_bytes = &frame_data[..NONCE_SIZE];
         let ciphertext = &frame_data[NONCE_SIZE..];
-
-        // Verify nonce matches expected counter (replay protection)
-        let expected_nonce = Self::build_nonce(self.recv_nonce_counter);
-        if received_nonce != expected_nonce {
-            return Err(anyhow!(
-                "Nonce mismatch — possible replay or reorder attack (expected {}, got {:?})",
-                self.recv_nonce_counter,
-                &received_nonce[4..12]
-            ));
+        
+        let mut counter_bytes = [0u8; 8];
+        counter_bytes.copy_from_slice(&received_nonce_bytes[4..12]);
+        let received_counter = u64::from_be_bytes(counter_bytes);
+        
+        if !self.replay_window.check_and_advance(received_counter) {
+            return Err(anyhow!("Replay or duplicate frame rejected (counter {})", received_counter));
         }
-
-        self.recv_nonce_counter += 1;
-
-        let nonce = chacha20poly1305::Nonce::from_slice(received_nonce);
-
+        
+        let nonce = chacha20poly1305::Nonce::from_slice(received_nonce_bytes);
         self.recv_cipher
             .decrypt(nonce, ciphertext)
             .map_err(|_| anyhow!("Decryption failed — data corrupted or tampered"))
@@ -268,20 +382,35 @@ impl<S: AsyncRead + AsyncWrite + Unpin> EncryptedSession<S> {
         self.send_nonce_counter
     }
 
-    /// Get the current receive nonce counter.
+    /// Get the highest received nonce seen so far (useful for diagnostics).
     pub fn recv_counter(&self) -> u64 {
-        self.recv_nonce_counter
+        self.replay_window.highest
     }
 }
 
 pub struct EncryptedSessionReadHalf<R: AsyncRead + Unpin> {
     reader: FrameReader<R>,
     recv_cipher: ChaCha20Poly1305,
-    recv_nonce_counter: u64,
-    pub closed: bool,
+    recv_key: Zeroizing<[u8; 32]>,
+    replay_window: ReplayWindow,
+    closed: bool,
 }
 
 impl<R: AsyncRead + Unpin> EncryptedSessionReadHalf<R> {
+    pub fn is_closed(&self) -> bool {
+        self.closed
+    }
+
+    /// Rotate the recv key upon receiving an in-band REKEY frame from the peer.
+    pub fn ratchet_recv(&mut self) -> Result<()> {
+        ratchet_key(&mut self.recv_key);
+        self.recv_cipher = ChaCha20Poly1305::new_from_slice(&*self.recv_key)
+            .map_err(|e| anyhow!("Failed to ratchet recv cipher: {}", e))?;
+        self.replay_window = ReplayWindow::new();
+        debug!("Ratchet: recv key rotated, replay window reset");
+        Ok(())
+    }
+
     pub async fn recv(&mut self) -> Result<Option<Vec<u8>>> {
         if self.closed {
             return Ok(None);
@@ -307,9 +436,14 @@ impl<R: AsyncRead + Unpin> EncryptedSessionReadHalf<R> {
 
             match frame_type {
                 FRAME_TYPE_DATA => {
-                    return Ok(Some(payload.to_vec()));
+                    let unpadded = unpad_data(payload).map_err(|e| anyhow!("Unpad failed: {}", e))?;
+                    return Ok(Some(unpadded));
                 }
-                FRAME_TYPE_KEEPALIVE => {
+                FRAME_TYPE_KEEPALIVE | FRAME_TYPE_DUMMY => {
+                    continue;
+                }
+                FRAME_TYPE_REKEY => {
+                    self.ratchet_recv()?;
                     continue;
                 }
                 FRAME_TYPE_CLOSE => {
@@ -327,23 +461,18 @@ impl<R: AsyncRead + Unpin> EncryptedSessionReadHalf<R> {
         if frame_data.len() < NONCE_SIZE + AEAD_TAG_SIZE {
             return Err(anyhow!("Encrypted frame too short"));
         }
-
-        let received_nonce = &frame_data[..NONCE_SIZE];
+        let received_nonce_bytes = &frame_data[..NONCE_SIZE];
         let ciphertext = &frame_data[NONCE_SIZE..];
-
-        let expected_nonce = build_nonce(self.recv_nonce_counter);
-        if received_nonce != expected_nonce {
-            return Err(anyhow!(
-                "Nonce mismatch — possible replay or reorder attack (expected {}, got {:?})",
-                self.recv_nonce_counter,
-                &received_nonce[4..12]
-            ));
+        
+        let mut counter_bytes = [0u8; 8];
+        counter_bytes.copy_from_slice(&received_nonce_bytes[4..12]);
+        let received_counter = u64::from_be_bytes(counter_bytes);
+        
+        if !self.replay_window.check_and_advance(received_counter) {
+            return Err(anyhow!("Replay or duplicate frame rejected (counter {})", received_counter));
         }
-
-        self.recv_nonce_counter += 1;
-
-        let nonce = chacha20poly1305::Nonce::from_slice(received_nonce);
-
+        
+        let nonce = chacha20poly1305::Nonce::from_slice(received_nonce_bytes);
         self.recv_cipher
             .decrypt(nonce, ciphertext)
             .map_err(|_| anyhow!("Decryption failed — data corrupted or tampered"))
@@ -353,24 +482,77 @@ impl<R: AsyncRead + Unpin> EncryptedSessionReadHalf<R> {
 pub struct EncryptedSessionWriteHalf<W: AsyncWrite + Unpin> {
     writer: FrameWriter<W>,
     send_cipher: ChaCha20Poly1305,
+    send_key: Zeroizing<[u8; 32]>,
     send_nonce_counter: u64,
-    pub closed: bool,
+    closed: bool,
 }
 
 impl<W: AsyncWrite + Unpin> EncryptedSessionWriteHalf<W> {
+    pub fn is_closed(&self) -> bool {
+        self.closed
+    }
+
+    /// Rotate the send key and send an in-band REKEY frame to the peer.
+    pub async fn ratchet_send(&mut self) -> Result<()> {
+        if self.closed {
+            return Err(anyhow!("Session is closed"));
+        }
+        let plaintext = vec![FRAME_TYPE_REKEY];
+        let encrypted = self.encrypt_frame(&plaintext)?;
+        self.writer
+            .write_frame(&encrypted)
+            .await
+            .context("Failed to send rekey frame")?;
+        ratchet_key(&mut self.send_key);
+        self.send_cipher = ChaCha20Poly1305::new_from_slice(&*self.send_key)
+            .map_err(|e| anyhow!("Failed to ratchet send cipher: {}", e))?;
+        self.send_nonce_counter = 0;
+        debug!("Ratchet: send key rotated, counter reset to 0");
+        Ok(())
+    }
+
+    /// Send a dummy frame with randomized length and content for traffic shaping.
+    pub async fn send_dummy(&mut self) -> Result<()> {
+        if self.closed {
+            return Err(anyhow!("Session is closed"));
+        }
+        if self.send_nonce_counter >= REKEY_THRESHOLD_FRAMES {
+            self.ratchet_send().await?;
+        }
+        let dummy = crate::obfuscation::padding::generate_dummy_packet(&PaddingConfig::default());
+        let mut plaintext = Vec::with_capacity(1 + dummy.len());
+        plaintext.push(FRAME_TYPE_DUMMY);
+        plaintext.extend_from_slice(&dummy);
+
+        let encrypted = self.encrypt_frame(&plaintext)?;
+        self.writer
+            .write_frame(&encrypted)
+            .await
+            .context("Failed to send dummy frame")
+    }
+
     pub async fn send(&mut self, data: &[u8]) -> Result<()> {
         if self.closed {
             return Err(anyhow!("Session is closed"));
+        }
+        if self.send_nonce_counter >= REKEY_THRESHOLD_FRAMES {
+            self.ratchet_send().await?;
         }
 
         if data.is_empty() {
             return Ok(());
         }
 
-        for chunk in data.chunks(MAX_PLAINTEXT_PER_FRAME - 1) {
-            let mut plaintext = Vec::with_capacity(1 + chunk.len());
+        let pad_config = PaddingConfig::default();
+        let chunk_size = MAX_PLAINTEXT_PER_FRAME.saturating_sub(300).max(1);
+        for chunk in data.chunks(chunk_size) {
+            if self.send_nonce_counter >= REKEY_THRESHOLD_FRAMES {
+                self.ratchet_send().await?;
+            }
+            let padded_chunk = pad_data(chunk, &pad_config);
+            let mut plaintext = Vec::with_capacity(1 + padded_chunk.len());
             plaintext.push(FRAME_TYPE_DATA);
-            plaintext.extend_from_slice(chunk);
+            plaintext.extend_from_slice(&padded_chunk);
 
             let encrypted = self.encrypt_frame(&plaintext)?;
             self.writer
@@ -385,6 +567,9 @@ impl<W: AsyncWrite + Unpin> EncryptedSessionWriteHalf<W> {
     pub async fn send_keepalive(&mut self) -> Result<()> {
         if self.closed {
             return Err(anyhow!("Session is closed"));
+        }
+        if self.send_nonce_counter >= REKEY_THRESHOLD_FRAMES {
+            self.ratchet_send().await?;
         }
 
         let plaintext = vec![FRAME_TYPE_KEEPALIVE];
@@ -439,6 +624,25 @@ mod tests {
     use crate::crypto::keys::KeyPair;
     use crate::protocol::handshake;
     use tokio::io::duplex;
+
+    #[test]
+    fn test_replay_window_rejects_duplicates() {
+        let mut w = ReplayWindow::new();
+        assert!(w.check_and_advance(0));
+        assert!(!w.check_and_advance(0)); // duplicate
+        assert!(w.check_and_advance(1));
+        assert!(w.check_and_advance(63)); // within window
+        assert!(!w.check_and_advance(63)); // duplicate
+    }
+
+    #[test]
+    fn test_replay_window_rejects_old() {
+        let mut w = ReplayWindow::new();
+        for i in 0..100u64 { w.check_and_advance(i); }
+        assert!(!w.check_and_advance(0)); // 100 slots old — too old
+        assert!(!w.check_and_advance(35)); // 65 slots old — too old
+        assert!(w.check_and_advance(100)); // new nonce — ok
+    }
 
     /// Helper: perform handshake and return encrypted sessions for both sides
     async fn setup_session() -> (
@@ -540,5 +744,51 @@ mod tests {
 
         let result = server.recv().await.unwrap();
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_dummy_frames_ignored() {
+        let (mut client, mut server) = setup_session().await;
+
+        client.send_dummy().await.unwrap();
+        client.send(b"real data").await.unwrap();
+        client.send_dummy().await.unwrap();
+
+        let received = server.recv().await.unwrap().unwrap();
+        assert_eq!(received, b"real data");
+    }
+
+    #[tokio::test]
+    async fn test_rekey_ratchet() {
+        let (mut client, mut server) = setup_session().await;
+
+        client.send(b"message before rekey").await.unwrap();
+        let r1 = server.recv().await.unwrap().unwrap();
+        assert_eq!(r1, b"message before rekey");
+
+        // Manually trigger ratcheting on client
+        client.ratchet_send().await.unwrap();
+
+        client.send(b"message after rekey").await.unwrap();
+        let r2 = server.recv().await.unwrap().unwrap();
+        assert_eq!(r2, b"message after rekey");
+    }
+
+    #[tokio::test]
+    async fn test_split_half_ratchet_and_dummy() {
+        let (client, server) = setup_session().await;
+        let (_c_read, mut c_write) = client.into_split();
+        let (mut s_read, _s_write) = server.into_split();
+
+        c_write.send(b"split message 1").await.unwrap();
+        let r1 = s_read.recv().await.unwrap().unwrap();
+        assert_eq!(r1, b"split message 1");
+
+        c_write.send_dummy().await.unwrap();
+        c_write.ratchet_send().await.unwrap();
+
+        c_write.send(b"split message 2").await.unwrap();
+        let r2 = s_read.recv().await.unwrap().unwrap();
+        assert_eq!(r2, b"split message 2");
     }
 }

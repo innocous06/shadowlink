@@ -8,6 +8,7 @@ name = "shadowlink-client"
 path = "src/main.rs"
 
 [dependencies]
+rpassword = "7"
 shadowlink-core = { path = "../shadowlink-core" }
 tokio = { workspace = true }
 tokio-rustls = { workspace = true }
@@ -20,3 +21,4 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 x25519-dalek = { workspace = true }
+rand = { workspace = true }

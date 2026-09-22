@@ -61,6 +61,8 @@ impl DnsQuery {
     /// Serialize for tunnel transmission
     pub fn to_bytes(&self) -> Vec<u8> {
         let domain_bytes = self.domain.as_bytes();
+        // DNS protocol limits domain label length to 255 bytes (1-byte length field)
+        assert!(domain_bytes.len() <= 255, "domain name exceeds 255 bytes");
         let mut buf = Vec::with_capacity(6 + domain_bytes.len());
         buf.push(DNS_CMD_QUERY);
         buf.extend_from_slice(&self.query_id.to_be_bytes());
@@ -116,6 +118,9 @@ pub struct DnsResponse {
 impl DnsResponse {
     /// Serialize for tunnel transmission
     pub fn to_bytes(&self) -> Vec<u8> {
+        // Both count fields are u8 — assert before casting to prevent silent truncation
+        assert!(self.ipv4_addrs.len() <= 255, "too many IPv4 addresses (max 255)");
+        assert!(self.ipv6_addrs.len() <= 255, "too many IPv6 addresses (max 255)");
         let mut buf = Vec::new();
         buf.push(DNS_CMD_RESPONSE);
         buf.extend_from_slice(&self.query_id.to_be_bytes());

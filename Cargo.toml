@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/shadowlink-core",
     "crates/shadowlink-server",
-    "crates/shadowlink-client",
+    "crates/shadowlink-client", "crates/shadowlink-gui",
     "crates/shadowlink-keygen", "certgen",
 ]
 
@@ -51,3 +51,4 @@ lto = true
 codegen-units = 1
 panic = "abort"
 opt-level = 3
+

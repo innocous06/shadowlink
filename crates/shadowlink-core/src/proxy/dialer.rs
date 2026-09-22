@@ -3,8 +3,7 @@
 //! Routes outbound connections through the ShadowLink encrypted tunnel.
 //! This is the bridge between the local SOCKS5 proxy and the remote server.
 
-use anyhow::{anyhow, Context, Result};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use anyhow::{anyhow, Result};
 
 use super::socks5::TargetAddr;
 
@@ -14,6 +13,7 @@ const CMD_CONNECT_REPLY: u8 = 0x02;
 const CMD_DATA: u8 = 0x03;
 const CMD_CLOSE: u8 = 0x04;
 const CMD_RAW_PACKET: u8 = 0x05;
+const CMD_UDP_PACKET: u8 = 0x06;
 
 /// A request to open a new connection through the tunnel
 #[derive(Debug)]
@@ -96,7 +96,14 @@ impl ConnectReply {
         let success = data[5] == 0x00;
         let err_len = u16::from_be_bytes([data[6], data[7]]) as usize;
 
-        let error = if err_len > 0 && data.len() >= 8 + err_len {
+        let error = if err_len > 0 {
+            if data.len() < 8 + err_len {
+                return Err(anyhow!(
+                    "ConnectReply truncated: expected {} error bytes, got {}",
+                    err_len,
+                    data.len().saturating_sub(8)
+                ));
+            }
             Some(String::from_utf8_lossy(&data[8..8 + err_len]).to_string())
         } else {
             None
@@ -177,15 +184,6 @@ impl ClosePacket {
     }
 }
 
-/// Parse a tunnel message and determine its type
-pub enum TunnelMessage {
-    Connect(ConnectRequest),
-    ConnectReply(ConnectReply),
-    Data(DataPacket),
-    Close(ClosePacket),
-    RawPacket(RawPacket),
-}
-
 /// A raw IP packet (Layer 3)
 #[derive(Debug)]
 pub struct RawPacket {
@@ -210,7 +208,78 @@ impl RawPacket {
     }
 }
 
+/// A UDP datagram packet routed through the tunnel
+#[derive(Debug, Clone)]
+pub struct UdpPacket {
+    /// Stream or association ID
+    pub stream_id: u32,
+    /// Destination address (for client->server) or source address (for server->client)
+    pub target: TargetAddr,
+    /// Datagram payload
+    pub data: Vec<u8>,
+}
+
+impl UdpPacket {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let target_bytes = self.target.to_bytes();
+        let mut buf = Vec::with_capacity(1 + 4 + target_bytes.len() + 2 + self.data.len());
+        buf.push(CMD_UDP_PACKET);
+        buf.extend_from_slice(&self.stream_id.to_be_bytes());
+        buf.extend_from_slice(&target_bytes);
+        buf.extend_from_slice(&(self.data.len() as u16).to_be_bytes());
+        buf.extend_from_slice(&self.data);
+        buf
+    }
+
+    pub fn from_bytes(data: &[u8]) -> Result<Self> {
+        if data.len() < 7 {
+            return Err(anyhow!("UdpPacket too short"));
+        }
+        if data[0] != CMD_UDP_PACKET {
+            return Err(anyhow!("Not a UdpPacket"));
+        }
+        let stream_id = u32::from_be_bytes([data[1], data[2], data[3], data[4]]);
+        let (target, consumed) = TargetAddr::from_bytes(&data[5..])?;
+        let offset = 5 + consumed;
+        if data.len() < offset + 2 {
+            return Err(anyhow!("UdpPacket missing payload length"));
+        }
+        let data_len = u16::from_be_bytes([data[offset], data[offset + 1]]) as usize;
+        let payload_start = offset + 2;
+        if data.len() < payload_start + data_len {
+            return Err(anyhow!("UdpPacket payload truncated"));
+        }
+        let data = data[payload_start..payload_start + data_len].to_vec();
+        Ok(Self {
+            stream_id,
+            target,
+            data,
+        })
+    }
+}
+
+/// Parse a tunnel message and determine its type
+pub enum TunnelMessage {
+    Connect(ConnectRequest),
+    ConnectReply(ConnectReply),
+    Data(DataPacket),
+    Close(ClosePacket),
+    RawPacket(RawPacket),
+    Udp(UdpPacket),
+}
+
 impl TunnelMessage {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        match self {
+            TunnelMessage::Connect(r) => r.to_bytes(),
+            TunnelMessage::ConnectReply(r) => r.to_bytes(),
+            TunnelMessage::Data(d) => d.to_bytes(),
+            TunnelMessage::Close(c) => c.to_bytes(),
+            TunnelMessage::RawPacket(p) => p.to_bytes(),
+            TunnelMessage::Udp(u) => u.to_bytes(),
+        }
+    }
+
     /// Parse raw bytes into a tunnel message
     pub fn parse(data: &[u8]) -> Result<Self> {
         if data.is_empty() {
@@ -223,6 +292,7 @@ impl TunnelMessage {
             CMD_DATA => Ok(TunnelMessage::Data(DataPacket::from_bytes(data)?)),
             CMD_CLOSE => Ok(TunnelMessage::Close(ClosePacket::from_bytes(data)?)),
             CMD_RAW_PACKET => Ok(TunnelMessage::RawPacket(RawPacket::from_bytes(data)?)),
+            CMD_UDP_PACKET => Ok(TunnelMessage::Udp(UdpPacket::from_bytes(data)?)),
             other => Err(anyhow!("Unknown tunnel message type: 0x{:02x}", other)),
         }
     }
@@ -307,6 +377,32 @@ mod tests {
                 assert_eq!(r.stream_id, 1);
             }
             _ => panic!("Expected Connect message"),
+        }
+    }
+
+    #[test]
+    fn test_udp_packet_roundtrip() {
+        let pkt = UdpPacket {
+            stream_id: 42,
+            target: TargetAddr::Domain("dns.google".to_string(), 53),
+            data: vec![0x12, 0x34, 0x56, 0x78],
+        };
+
+        let bytes = pkt.to_bytes();
+        let parsed = UdpPacket::from_bytes(&bytes).unwrap();
+        assert_eq!(parsed.stream_id, 42);
+        assert_eq!(parsed.target.to_string_repr(), "dns.google:53");
+        assert_eq!(parsed.data, vec![0x12, 0x34, 0x56, 0x78]);
+
+        let msg = TunnelMessage::Udp(pkt);
+        let msg_bytes = msg.to_bytes();
+        match TunnelMessage::parse(&msg_bytes).unwrap() {
+            TunnelMessage::Udp(u) => {
+                assert_eq!(u.stream_id, 42);
+                assert_eq!(u.target.to_string_repr(), "dns.google:53");
+                assert_eq!(u.data, vec![0x12, 0x34, 0x56, 0x78]);
+            }
+            _ => panic!("Expected Udp message"),
         }
     }
 }

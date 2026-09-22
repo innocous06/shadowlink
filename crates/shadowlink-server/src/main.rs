@@ -14,7 +14,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info, warn};
@@ -25,11 +25,63 @@ use shadowlink_core::obfuscation::probe_resist::ProbeResistHandler;
 use shadowlink_core::obfuscation::tls_camouflage;
 use shadowlink_core::protocol::handshake;
 use shadowlink_core::proxy::dialer::{
-    ClosePacket, ConnectReply, DataPacket, TunnelMessage,
+    ClosePacket, ConnectReply, DataPacket, TunnelMessage, UdpPacket,
 };
 #[cfg(target_os = "linux")]
 use shadowlink_core::proxy::dialer::RawPacket;
 use shadowlink_core::proxy::socks5::TargetAddr;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::Instant;
+
+/// Token-bucket QoS rate limiter for bandwidth throttling per client
+pub struct TokenBucket {
+    rate_bytes_per_sec: u64,
+    capacity_bytes: u64,
+    tokens: AtomicI64,
+    last_update: std::sync::Mutex<Instant>,
+}
+
+impl TokenBucket {
+    pub fn new(rate_mbps: f64) -> Self {
+        let rate_bytes_per_sec = (rate_mbps * 125_000.0).max(1024.0) as u64;
+        let capacity_bytes = rate_bytes_per_sec.max(65536);
+        Self {
+            rate_bytes_per_sec,
+            capacity_bytes,
+            tokens: AtomicI64::new(capacity_bytes as i64),
+            last_update: std::sync::Mutex::new(Instant::now()),
+        }
+    }
+
+    pub async fn acquire(&self, bytes: usize) {
+        let bytes = bytes as i64;
+        loop {
+            {
+                let mut last = self.last_update.lock().unwrap();
+                let now = Instant::now();
+                let elapsed = now.duration_since(*last).as_secs_f64();
+                if elapsed > 0.001 {
+                    let new_tokens = (elapsed * self.rate_bytes_per_sec as f64) as i64;
+                    if new_tokens > 0 {
+                        let cur = self.tokens.load(Ordering::Relaxed);
+                        let updated = (cur + new_tokens).min(self.capacity_bytes as i64);
+                        self.tokens.store(updated, Ordering::Relaxed);
+                        *last = now;
+                    }
+                }
+            }
+
+            let cur = self.tokens.fetch_sub(bytes, Ordering::Relaxed);
+            if cur >= bytes {
+                return;
+            }
+
+            let deficit = bytes - cur;
+            let wait_secs = (deficit as f64 / self.rate_bytes_per_sec as f64).min(2.0);
+            tokio::time::sleep(std::time::Duration::from_secs_f64(wait_secs)).await;
+        }
+    }
+}
 
 /// Server configuration (TOML)
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -47,6 +99,10 @@ pub struct ServerConfig {
     pub enable_tun_mode: bool,
     /// Name of the TUN interface (default: "shadowlink0")
     pub tun_interface_name: String,
+    /// Active web-server reverse-proxy fallback (e.g. "127.0.0.1:80")
+    pub fallback_addr: Option<String>,
+    /// Per-client bandwidth rate limit in Mbps (e.g. 50.0)
+    pub client_rate_limit_mbps: Option<f64>,
 }
 
 impl Default for ServerConfig {
@@ -63,6 +119,8 @@ impl Default for ServerConfig {
             dns_servers: None,
             enable_tun_mode: true,
             tun_interface_name: "shadowlink0".to_string(),
+            fallback_addr: None,
+            client_rate_limit_mbps: None,
         }
     }
 }
@@ -73,6 +131,7 @@ struct ServerState {
     allowed_clients: Vec<PublicKey>,
     tls_acceptor: tokio_rustls::TlsAcceptor,
     probe_handler: ProbeResistHandler,
+    client_rate_limit_mbps: Option<f64>,
 
     /// The TUN device, created ONCE at server startup.
     /// Shared across all client sessions via Arc.
@@ -84,7 +143,7 @@ struct ServerState {
     /// TUN reader task sends internet-reply RawPackets here.
     /// Replaced each time a new client connects (single-user VPN).
     #[cfg(target_os = "linux")]
-    tun_client_tx: Arc<std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>>,
+    tun_client_tx: Arc<tokio::sync::Mutex<std::collections::HashMap<Ipv4Addr, tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>>,
 }
 
 #[tokio::main]
@@ -149,9 +208,10 @@ async fn main() -> Result<()> {
         .context("Failed to create TLS config")?;
 
     let probe_handler = if let Some(ref html_path) = config.decoy_html_path {
-        ProbeResistHandler::with_custom_html(std::fs::read_to_string(html_path)?)
+        let custom_html = std::fs::read_to_string(html_path).ok();
+        ProbeResistHandler::with_fallback(config.fallback_addr.clone(), custom_html)
     } else {
-        ProbeResistHandler::new()
+        ProbeResistHandler::with_fallback(config.fallback_addr.clone(), None)
     };
 
     // -------------------------------------------------------------------------
@@ -160,8 +220,8 @@ async fn main() -> Result<()> {
     // ExecStartPost / ip commands can configure its IP address immediately.
     // -------------------------------------------------------------------------
     #[cfg(target_os = "linux")]
-    let tun_client_tx: Arc<std::sync::Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>> =
-        Arc::new(std::sync::Mutex::new(None));
+    let tun_client_tx: Arc<tokio::sync::Mutex<std::collections::HashMap<Ipv4Addr, tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>> =
+        Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
 
     #[cfg(target_os = "linux")]
     let tun: Option<Arc<shadowlink_core::proxy::linux_tun::LinuxTun>> = if config.enable_tun_mode {
@@ -177,13 +237,13 @@ async fn main() -> Result<()> {
                 let tx_ref = Arc::clone(&tun_client_tx);
                 tokio::spawn(async move {
                     while let Some(pkt) = tun_rx.recv().await {
+                        if pkt.len() < 20 { continue; } // too short for IPv4
+                        let dst_ip = Ipv4Addr::new(pkt[16], pkt[17], pkt[18], pkt[19]);
                         let raw = RawPacket { data: pkt };
                         let bytes = raw.to_bytes();
-                        // Send to current client if one is connected
-                        if let Ok(guard) = tx_ref.lock() {
-                            if let Some(ref tx) = *guard {
-                                let _ = tx.send(bytes);
-                            }
+                        let guard = tx_ref.lock().await;
+                        if let Some(tx) = guard.get(&dst_ip) {
+                            let _ = tx.send(bytes);
                         }
                     }
                 });
@@ -206,6 +266,7 @@ async fn main() -> Result<()> {
         allowed_clients,
         tls_acceptor,
         probe_handler,
+        client_rate_limit_mbps: config.client_rate_limit_mbps,
         #[cfg(target_os = "linux")]
         tun,
         #[cfg(target_os = "linux")]
@@ -248,17 +309,25 @@ async fn handle_connection(
     let mut tls_stream = tls_camouflage::tls_accept(tcp_stream, &state.tls_acceptor)
         .await.context("TLS handshake failed")?;
 
-    match handshake::server_handshake(&mut tls_stream, &state.server_keypair, &state.allowed_clients).await {
-        Ok(session_keys) => {
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        handshake::server_handshake(&mut tls_stream, &state.server_keypair, &state.allowed_clients),
+    ).await {
+        Ok(Ok(session_keys)) => {
             info!("Authenticated client from {}", peer_addr);
             let session = shadowlink_core::protocol::session::EncryptedSession::new(tls_stream, session_keys)
                 .context("Failed to create encrypted session")?;
             handle_proxy_session(session, peer_addr, state).await
         }
-        Err(e) => {
-            warn!("Handshake failed from {} (serving decoy): {}", peer_addr, e);
-            state.probe_handler.serve_decoy(&mut tls_stream).await.context("Decoy failed")?;
+        Ok(Err(e)) => {
+            warn!("Handshake failed from {} (serving fallback/decoy): {}", peer_addr, e);
+            state.probe_handler.handle_unauthenticated(&mut tls_stream).await.context("Fallback/decoy failed")?;
             Ok(())
+        }
+        Err(_) => {
+            warn!("Handshake timed out from {} (serving fallback/decoy)", peer_addr);
+            let _ = state.probe_handler.handle_unauthenticated(&mut tls_stream).await;
+            Err(anyhow::anyhow!("Handshake timed out from {}", peer_addr))
         }
     }
 }
@@ -266,6 +335,7 @@ async fn handle_connection(
 async fn handle_proxy_session<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static>(
     session: shadowlink_core::protocol::session::EncryptedSession<S>,
     peer_addr: SocketAddr,
+    #[allow(unused_variables)]
     state: Arc<ServerState>,
 ) -> Result<()> {
     use std::collections::HashMap;
@@ -273,24 +343,27 @@ async fn handle_proxy_session<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + 
     use tokio::sync::mpsc;
     use tokio::sync::Mutex;
 
+    type ActiveUdpStreams = Arc<Mutex<HashMap<u32, mpsc::UnboundedSender<(TargetAddr, Vec<u8>)>>>>;
     let (mut session_read, mut session_write) = session.into_split();
     let (write_tx, mut write_rx) = mpsc::unbounded_channel::<Vec<u8>>();
     let active_streams: Arc<Mutex<HashMap<u32, mpsc::UnboundedSender<Vec<u8>>>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let active_udp_streams: ActiveUdpStreams =
+        Arc::new(Mutex::new(HashMap::new()));
 
-    // Register this client as the TUN packet destination.
-    // Internet replies will flow to this client's write_tx.
-    #[cfg(target_os = "linux")]
-    if state.tun.is_some() {
-        if let Ok(mut guard) = state.tun_client_tx.lock() {
-            *guard = Some(write_tx.clone());
-            info!("Client {} registered as TUN destination", peer_addr);
-        }
-    }
+    let rate_limiter = state.client_rate_limit_mbps.map(|mbps| Arc::new(TokenBucket::new(mbps)));
+    let write_limiter = rate_limiter.clone();
+    let read_limiter = rate_limiter;
+
+    #[allow(unused_mut, unused_variables)]
+    let mut client_tun_ip: Option<Ipv4Addr> = None;
 
     // Tunnel writer task
     tokio::spawn(async move {
         while let Some(data) = write_rx.recv().await {
+            if let Some(ref limiter) = write_limiter {
+                limiter.acquire(data.len()).await;
+            }
             if session_write.send(&data).await.is_err() { break; }
         }
         let _ = session_write.close().await;
@@ -304,6 +377,10 @@ async fn handle_proxy_session<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + 
             Err(e) => { debug!("Tunnel read error from {}: {}", peer_addr, e); break; }
         };
 
+        if let Some(ref limiter) = read_limiter {
+            limiter.acquire(data.len()).await;
+        }
+
         let message = match TunnelMessage::parse(&data) {
             Ok(m) => m,
             Err(e) => { warn!("Invalid tunnel message from {}: {}", peer_addr, e); continue; }
@@ -314,6 +391,18 @@ async fn handle_proxy_session<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + 
             // SOCKS5-style TCP streams
             // ------------------------------------------------------------------
             TunnelMessage::Connect(req) => {
+                const MAX_STREAMS_PER_CLIENT: usize = 512;
+                if active_streams.lock().await.len() >= MAX_STREAMS_PER_CLIENT {
+                    warn!("Stream limit ({}) reached for client {}", MAX_STREAMS_PER_CLIENT, peer_addr);
+                    let reply = ConnectReply {
+                        stream_id: req.stream_id,
+                        success: false,
+                        error: Some("Stream limit reached".to_string()),
+                    };
+                    let _ = write_tx.send(reply.to_bytes());
+                    continue;
+                }
+
                 debug!("CONNECT stream {} → {}", req.stream_id, req.target.to_string_repr());
                 let stream_id = req.stream_id;
                 let target = req.target.clone();
@@ -366,9 +455,75 @@ async fn handle_proxy_session<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + 
                 if let Some(tx) = streams.get(&pkt.stream_id) { let _ = tx.send(pkt.data); }
             }
 
+            TunnelMessage::Udp(pkt) => {
+                let stream_id = pkt.stream_id;
+                let target = pkt.target;
+                let data = pkt.data;
+
+                let tx = {
+                    let mut streams = active_udp_streams.lock().await;
+                    if let Some(tx) = streams.get(&stream_id) {
+                        tx.clone()
+                    } else {
+                        match tokio::net::UdpSocket::bind("0.0.0.0:0").await {
+                            Ok(sock) => {
+                                let sock = Arc::new(sock);
+                                let (utx, mut urx) = mpsc::unbounded_channel::<(TargetAddr, Vec<u8>)>();
+                                streams.insert(stream_id, utx.clone());
+
+                                let sock_send = Arc::clone(&sock);
+                                let sock_recv = Arc::clone(&sock);
+                                let write_tx_udp = write_tx.clone();
+                                let udp_streams_c = Arc::clone(&active_udp_streams);
+
+                                tokio::spawn(async move {
+                                    while let Some((tgt, payload)) = urx.recv().await {
+                                        match resolve_target_udp(&tgt).await {
+                                            Ok(dest_addr) => {
+                                                let _ = sock_send.send_to(&payload, dest_addr).await;
+                                            }
+                                            Err(e) => {
+                                                debug!("Failed to resolve UDP target {}: {}", tgt.to_string_repr(), e);
+                                            }
+                                        }
+                                    }
+                                });
+
+                                tokio::spawn(async move {
+                                    let mut buf = [0u8; 65535];
+                                    while let Ok(Ok((n, src_addr))) = tokio::time::timeout(
+                                        std::time::Duration::from_secs(60),
+                                        sock_recv.recv_from(&mut buf),
+                                    ).await {
+                                        let reply = UdpPacket {
+                                            stream_id,
+                                            target: TargetAddr::from(src_addr),
+                                            data: buf[..n].to_vec(),
+                                        };
+                                        if write_tx_udp.send(TunnelMessage::Udp(reply).to_bytes()).is_err() {
+                                            break;
+                                        }
+                                    }
+                                    udp_streams_c.lock().await.remove(&stream_id);
+                                });
+
+                                utx
+                            }
+                            Err(e) => {
+                                warn!("Failed to bind outbound UDP socket: {}", e);
+                                continue;
+                            }
+                        }
+                    }
+                };
+
+                let _ = tx.send((target, data));
+            }
+
             TunnelMessage::Close(c) => {
                 debug!("Close stream {}", c.stream_id);
                 active_streams.lock().await.remove(&c.stream_id);
+                active_udp_streams.lock().await.remove(&c.stream_id);
             }
 
             // ------------------------------------------------------------------
@@ -378,6 +533,13 @@ async fn handle_proxy_session<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + 
             TunnelMessage::RawPacket(pkt) => {
                 #[cfg(target_os = "linux")]
                 if let Some(ref tun) = state.tun {
+                    if pkt.data.len() >= 20 && client_tun_ip.is_none() {
+                        let src_ip = Ipv4Addr::new(pkt.data[12], pkt.data[13], pkt.data[14], pkt.data[15]);
+                        let mut guard = state.tun_client_tx.lock().await;
+                        guard.insert(src_ip, write_tx.clone());
+                        info!("Client registered at TUN IP: {}", src_ip);
+                        client_tun_ip = Some(src_ip);
+                    }
                     if let Err(e) = tun.write_packet(&pkt.data) {
                         debug!("TUN write error: {}", e);
                     }
@@ -394,18 +556,30 @@ async fn handle_proxy_session<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + 
 
     // Deregister client as TUN destination when they disconnect
     #[cfg(target_os = "linux")]
-    if state.tun.is_some() {
-        if let Ok(mut guard) = state.tun_client_tx.lock() {
-            *guard = None;
-        }
+    if let Some(ip) = client_tun_ip {
+        let mut guard = state.tun_client_tx.lock().await;
+        guard.remove(&ip);
     }
 
     Ok(())
 }
 
+async fn resolve_target_udp(target: &TargetAddr) -> Result<SocketAddr> {
+    match target {
+        TargetAddr::Ipv4(ip, port) => Ok(SocketAddr::new((*ip).into(), *port)),
+        TargetAddr::Ipv6(ip, port) => Ok(SocketAddr::new((*ip).into(), *port)),
+        TargetAddr::Domain(d, p) => {
+            let addr_str = format!("{}:{}", d, p);
+            let mut addrs = tokio::net::lookup_host(&addr_str).await
+                .context(format!("DNS lookup failed for {}", addr_str))?;
+            addrs.next().ok_or_else(|| anyhow::anyhow!("No IP address found for {}", d))
+        }
+    }
+}
+
 async fn connect_to_target(target: &TargetAddr) -> Result<TcpStream> {
     let s = target.to_string_repr();
-    let mut proxy_stream = match target {
+    let proxy_stream = match target {
         TargetAddr::Ipv4(ip, port) => TcpStream::connect((*ip, *port)).await.context(format!("Connect failed: {}", s))?,
         TargetAddr::Ipv6(ip, port) => TcpStream::connect((*ip, *port)).await.context(format!("Connect failed: {}", s))?,
         TargetAddr::Domain(d, p)   => TcpStream::connect(format!("{}:{}", d, p)).await.context(format!("Connect failed: {}", s))?,

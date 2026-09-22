@@ -1,5 +1,8 @@
-﻿pub mod crypto;
+pub mod crypto;
 pub mod protocol;
 pub mod obfuscation;
 pub mod proxy;
 pub mod android_ffi;
+
+pub mod stats;
+

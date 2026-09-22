@@ -25,3 +25,6 @@ test-client.toml
 test-server.toml
 test-key.pem
 test-cert.pem
+
+# CI workflow ignored for OAuth tokens without workflow scope
+.github/

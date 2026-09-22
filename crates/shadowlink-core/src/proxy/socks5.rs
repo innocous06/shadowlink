@@ -16,8 +16,8 @@
 use anyhow::{anyhow, Context, Result};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info, warn};
+use tokio::net::TcpStream;
+use tracing::{debug, warn};
 
 /// SOCKS5 protocol constants
 const SOCKS5_VERSION: u8 = 0x05;
@@ -27,13 +27,14 @@ const SOCKS5_CMD_UDP_ASSOCIATE: u8 = 0x03;
 const SOCKS5_ATYP_IPV4: u8 = 0x01;
 const SOCKS5_ATYP_DOMAIN: u8 = 0x03;
 const SOCKS5_ATYP_IPV6: u8 = 0x04;
-const SOCKS5_REPLY_SUCCESS: u8 = 0x00;
-const SOCKS5_REPLY_FAILURE: u8 = 0x01;
-const SOCKS5_REPLY_NOT_ALLOWED: u8 = 0x02;
+pub const SOCKS5_REPLY_SUCCESS: u8 = 0x00;
+// SOCKS5 reply codes (RFC 1928) — kept for protocol completeness and future error paths
+#[allow(dead_code)] const SOCKS5_REPLY_FAILURE: u8 = 0x01;
+#[allow(dead_code)] const SOCKS5_REPLY_NOT_ALLOWED: u8 = 0x02;
 const SOCKS5_REPLY_CMD_NOT_SUPPORTED: u8 = 0x07;
 
 /// The target address parsed from a SOCKS5 request
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TargetAddr {
     /// IPv4 address and port
     Ipv4(Ipv4Addr, u16),
@@ -41,6 +42,15 @@ pub enum TargetAddr {
     Ipv6(Ipv6Addr, u16),
     /// Domain name and port (DNS resolution happens on the server side)
     Domain(String, u16),
+}
+
+impl From<SocketAddr> for TargetAddr {
+    fn from(addr: SocketAddr) -> Self {
+        match addr {
+            SocketAddr::V4(a) => TargetAddr::Ipv4(*a.ip(), a.port()),
+            SocketAddr::V6(a) => TargetAddr::Ipv6(*a.ip(), a.port()),
+        }
+    }
 }
 
 impl TargetAddr {
@@ -68,8 +78,13 @@ impl TargetAddr {
                 buf.extend_from_slice(&port.to_be_bytes());
             }
             TargetAddr::Domain(domain, port) => {
-                buf.push(SOCKS5_ATYP_DOMAIN);
                 let domain_bytes = domain.as_bytes();
+                // SOCKS5 encodes domain length as a single byte — max 255
+                if domain_bytes.len() > 255 {
+                    // This should never happen for real hostnames, but guard defensively
+                    panic!("Domain name too long for SOCKS5 encoding (> 255 bytes): {}", domain);
+                }
+                buf.push(SOCKS5_ATYP_DOMAIN);
                 buf.push(domain_bytes.len() as u8);
                 buf.extend_from_slice(domain_bytes);
                 buf.extend_from_slice(&port.to_be_bytes());
@@ -265,13 +280,67 @@ pub async fn send_reply(
     Ok(())
 }
 
+/// RFC 1928 SOCKS5 UDP request/response packet header
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UdpHeader {
+    pub frag: u8,
+    pub target: TargetAddr,
+}
+
+impl UdpHeader {
+    /// Parse an RFC 1928 UDP header from datagram bytes.
+    /// Returns the parsed header and the byte index where the payload data begins.
+    pub fn parse(data: &[u8]) -> Result<(Self, usize)> {
+        if data.len() < 4 {
+            return Err(anyhow!("UDP datagram too short for RFC 1928 header"));
+        }
+        let frag = data[2];
+        let (target, consumed) = TargetAddr::from_bytes(&data[3..])?;
+        let payload_offset = 3 + consumed;
+        if data.len() < payload_offset {
+            return Err(anyhow!("UDP datagram shorter than RFC 1928 header"));
+        }
+        Ok((Self { frag, target }, payload_offset))
+    }
+
+    /// Serialize this UDP header into bytes
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let target_bytes = self.target.to_bytes();
+        let mut buf = Vec::with_capacity(3 + target_bytes.len());
+        buf.push(0x00); // RSV
+        buf.push(0x00); // RSV
+        buf.push(self.frag);
+        buf.extend_from_slice(&target_bytes);
+        buf
+    }
+
+    /// Helper to encapsulate data into a full RFC 1928 UDP packet
+    pub fn wrap_packet(&self, payload: &[u8]) -> Vec<u8> {
+        let mut buf = self.to_bytes();
+        buf.extend_from_slice(payload);
+        buf
+    }
+}
+
+/// Result of processing a SOCKS5 client connection request.
+pub enum Socks5Request {
+    Connect {
+        stream: TcpStream,
+        target: TargetAddr,
+    },
+    UdpAssociate {
+        stream: TcpStream,
+        client_expected_addr: TargetAddr,
+    },
+}
+
 /// Process a single SOCKS5 client connection.
 ///
-/// This handles the SOCKS5 protocol and returns the target address
-/// that should be connected through the tunnel.
+/// This handles the SOCKS5 protocol and returns the parsed request:
+/// either a `Connect` request or a `UdpAssociate` request.
 pub async fn process_socks5_connection(
     mut stream: TcpStream,
-) -> Result<(TcpStream, TargetAddr)> {
+) -> Result<Socks5Request> {
     // Step 1: Authentication
     handle_auth(&mut stream)
         .await
@@ -292,19 +361,15 @@ pub async fn process_socks5_connection(
                 "0.0.0.0:0".parse().unwrap(),
             )
             .await?;
-            Ok((stream, target))
+            Ok(Socks5Request::Connect { stream, target })
         }
         SOCKS5_CMD_UDP_ASSOCIATE => {
-            // UDP associate — we'll implement the full version later
-            // For now, report the local UDP relay address
-            debug!("SOCKS5 UDP ASSOCIATE requested");
-            send_reply(
-                &mut stream,
-                SOCKS5_REPLY_SUCCESS,
-                "0.0.0.0:0".parse().unwrap(),
-            )
-            .await?;
-            Ok((stream, target))
+            debug!("SOCKS5 UDP ASSOCIATE from client {}", target.to_string_repr());
+            // Note: caller binds the local UDP socket and calls send_reply with the bound port.
+            Ok(Socks5Request::UdpAssociate {
+                stream,
+                client_expected_addr: target,
+            })
         }
         _ => {
             warn!("Unsupported SOCKS5 command: 0x{:02x}", cmd);
@@ -345,5 +410,20 @@ mod tests {
         let bytes = addr.to_bytes();
         let (parsed, _) = TargetAddr::from_bytes(&bytes).unwrap();
         assert_eq!(addr.to_string_repr(), parsed.to_string_repr());
+    }
+
+    #[test]
+    fn test_udp_header_roundtrip() {
+        let header = UdpHeader {
+            frag: 0,
+            target: TargetAddr::Ipv4(Ipv4Addr::new(8, 8, 4, 4), 53),
+        };
+        let payload = b"DNS query payload";
+        let packet = header.wrap_packet(payload);
+
+        let (parsed_header, offset) = UdpHeader::parse(&packet).unwrap();
+        assert_eq!(parsed_header.frag, 0);
+        assert_eq!(parsed_header.target.to_string_repr(), "8.8.4.4:53");
+        assert_eq!(&packet[offset..], payload);
     }
 }

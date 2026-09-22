@@ -42,7 +42,7 @@ class ShadowLinkVpnService : VpnService() {
     }
 
     private fun startVpn(serverAddr: String, clientPriv: String, serverPub: String) {
-        val builder = Builder()
+        val builder = Builder().setBlocking(true)
         builder.addAddress("10.8.0.2", 24)
         builder.addRoute("0.0.0.0", 0)
         builder.addDnsServer("1.1.1.1")
@@ -85,3 +85,4 @@ class ShadowLinkVpnService : VpnService() {
         super.onDestroy()
     }
 }
+

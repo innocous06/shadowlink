@@ -34,7 +34,7 @@ use chacha20poly1305::{
     ChaCha20Poly1305,
 };
 use rand::RngCore;
-use x25519_dalek::{PublicKey, StaticSecret, EphemeralSecret};
+use x25519_dalek::{PublicKey, StaticSecret};
 use zeroize::Zeroize;
 
 use super::frame;
@@ -60,12 +60,14 @@ const MAX_TIMESTAMP_DRIFT: u64 = 120; // 2 minutes
 
 
 /// Derive a symmetric key from DH shared secrets using BLAKE2s.
-/// This is our KDF — simple, fast, and formally analyzed.
+/// Uses length-prefixed inputs to eliminate concatenation ambiguity.
 fn derive_key(label: &[u8], materials: &[&[u8]]) -> [u8; 32] {
     let mut hasher = Blake2s256::new();
     hasher.update(b"ShadowLink-v1-");
+    hasher.update((label.len() as u32).to_be_bytes());
     hasher.update(label);
     for material in materials {
+        hasher.update((material.len() as u32).to_be_bytes());
         hasher.update(material);
     }
     let result = hasher.finalize();
@@ -114,6 +116,7 @@ fn decrypt_with_key(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>> {
 }
 
 /// The result of a successful handshake — session keys for encrypted communication.
+#[derive(Debug)]
 pub struct HandshakeResult {
     /// Key for encrypting data sent TO the peer
     pub send_key: [u8; 32],
@@ -145,7 +148,7 @@ pub async fn client_handshake<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + 
     server_static_public: &PublicKey,
 ) -> Result<HandshakeResult> {
     // Step 1: Generate ephemeral keypair for this session (forward secrecy)
-    let client_ephemeral_secret = EphemeralSecret::random_from_rng(rand::rngs::OsRng);
+    let client_ephemeral_secret = StaticSecret::random_from_rng(rand::rngs::OsRng);
     let client_ephemeral_public = PublicKey::from(&client_ephemeral_secret);
 
     // Step 2: Compute DH(client_ephemeral, server_static)
@@ -201,19 +204,18 @@ pub async fn client_handshake<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + 
     server_eph_bytes.copy_from_slice(&server_hello[..32]);
     let server_ephemeral_public = PublicKey::from(server_eph_bytes);
 
-    // Step 7: Derive session keys using all DH results
-    // We already consumed the EphemeralSecret, so we re-derive DH(ce, se) isn't possible
-    // with EphemeralSecret (it's consumed). We need to use a different approach.
-    // Actually, the server's confirmation will authenticate via the key chain.
+    // Step 7: Derive session keys using all DH results including DH(ce, se) for true forward secrecy
+    let dh_ee = client_ephemeral_secret.diffie_hellman(&server_ephemeral_public);
     
     // Derive session keys from accumulated key material
-    let mut session_material = Vec::with_capacity(128);
+    let mut session_material = Vec::with_capacity(160);
     session_material.extend_from_slice(client_ephemeral_public.as_bytes());
     session_material.extend_from_slice(server_ephemeral_public.as_bytes());
     session_material.extend_from_slice(client_static.public_key().as_bytes());
     session_material.extend_from_slice(server_static_public.as_bytes());
     session_material.extend_from_slice(dh_ss.as_ref());
     session_material.extend_from_slice(&key_es);
+    session_material.extend_from_slice(dh_ee.as_bytes());
 
     let send_key = derive_key(b"client-send", &[&session_material]);
     let recv_key = derive_key(b"client-recv", &[&session_material]);
@@ -326,11 +328,7 @@ pub async fn server_handshake<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + 
         .unwrap()
         .as_secs();
 
-    let drift = if now > client_timestamp {
-        now - client_timestamp
-    } else {
-        client_timestamp - now
-    };
+    let drift = now.abs_diff(client_timestamp);
 
     if drift > MAX_TIMESTAMP_DRIFT {
         return Err(anyhow!(
@@ -341,17 +339,21 @@ pub async fn server_handshake<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + 
     }
 
     // Step 6: Generate server ephemeral keypair
-    let server_ephemeral_secret = EphemeralSecret::random_from_rng(rand::rngs::OsRng);
+    let server_ephemeral_secret = StaticSecret::random_from_rng(rand::rngs::OsRng);
     let server_ephemeral_public = PublicKey::from(&server_ephemeral_secret);
 
+    // Compute DH(server_ephemeral, client_ephemeral) for true forward secrecy
+    let dh_ee = server_ephemeral_secret.diffie_hellman(&client_ephemeral_public);
+
     // Step 7: Derive session keys
-    let mut session_material = Vec::with_capacity(128);
+    let mut session_material = Vec::with_capacity(160);
     session_material.extend_from_slice(client_ephemeral_public.as_bytes());
     session_material.extend_from_slice(server_ephemeral_public.as_bytes());
     session_material.extend_from_slice(client_static_public.as_bytes());
     session_material.extend_from_slice(server_static.public_key().as_bytes());
     session_material.extend_from_slice(dh_ss.as_ref());
     session_material.extend_from_slice(&key_es);
+    session_material.extend_from_slice(dh_ee.as_bytes());
 
     // Note: server's send = client's recv, and vice versa
     let recv_key = derive_key(b"client-send", &[&session_material]);
@@ -430,7 +432,7 @@ mod tests {
 
         let (mut client_stream, mut server_stream) = duplex(65536);
 
-        let client_handle = tokio::spawn(async move {
+        let _client_handle = tokio::spawn(async move {
             client_handshake(&mut client_stream, &client_kp, &server_pub).await
         });
 
