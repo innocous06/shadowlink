@@ -12,7 +12,7 @@ use anyhow::{anyhow, Context, Result};
 use argon2::{Argon2, Algorithm, Version, Params};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use chacha20poly1305::{
-    aead::{Aead, KeyInit, OsRng as AeadOsRng},
+    aead::{Aead, KeyInit},
     XChaCha20Poly1305, XNonce,
 };
 use rand::RngCore;
@@ -115,8 +115,8 @@ impl KeyPair {
             version: 1,
             public_key: BASE64.encode(self.public.as_bytes()),
             encrypted_secret: BASE64.encode(&encrypted_secret),
-            salt: BASE64.encode(&salt),
-            nonce: BASE64.encode(&nonce_bytes),
+            salt: BASE64.encode(salt),
+            nonce: BASE64.encode(nonce_bytes),
             argon2_mem_cost: ARGON2_MEM_COST,
             argon2_time_cost: ARGON2_TIME_COST,
             argon2_parallelism: ARGON2_PARALLELISM,
@@ -158,9 +158,13 @@ impl KeyPair {
         let cipher = XChaCha20Poly1305::new_from_slice(&derived_key)
             .map_err(|e| anyhow!("Cipher init error: {}", e))?;
 
-        let mut secret_bytes = cipher
-            .decrypt(nonce, encrypted_secret.as_ref())
-            .map_err(|_| anyhow!("Decryption failed — wrong passphrase or corrupted file"))?;
+        let mut secret_bytes = match cipher.decrypt(nonce, encrypted_secret.as_ref()) {
+            Ok(b) => b,
+            Err(_) => {
+                derived_key.zeroize(); // always zeroize before returning error
+                return Err(anyhow!("Decryption failed — wrong passphrase or corrupted file"));
+            }
+        };
 
         derived_key.zeroize();
 

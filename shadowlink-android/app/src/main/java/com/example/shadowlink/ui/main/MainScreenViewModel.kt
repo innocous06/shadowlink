@@ -6,15 +6,21 @@ import com.example.shadowlink.data.DataRepository
 import com.example.shadowlink.ui.main.MainScreenUiState.Success
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import kotlinx.coroutines.flow.catch
+
+import android.content.Context
+import android.content.Intent
+import com.example.shadowlink.ShadowLinkVpnService
+import kotlinx.coroutines.flow.MutableStateFlow
+
+sealed class VpnState {
+    object Disconnected : VpnState()
+    object Connecting : VpnState()
+    data class Connected(val serverAddr: String) : VpnState()
+    data class Error(val message: String) : VpnState()
+}
 
 class MainScreenViewModel(dataRepository: DataRepository) : ViewModel() {
   val uiState: StateFlow<MainScreenUiState> =
@@ -23,33 +29,25 @@ class MainScreenViewModel(dataRepository: DataRepository) : ViewModel() {
       .catch { emit(MainScreenUiState.Error(it)) }
       .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), MainScreenUiState.Loading)
       
-  val pingResult = MutableStateFlow<String>("")
+  val vpnState = MutableStateFlow<VpnState>(VpnState.Disconnected)
 
-  fun pingVps() {
-      viewModelScope.launch {
-          pingResult.value = "Pinging VPS..."
-          val result = withContext(Dispatchers.IO) {
-              try {
-                  val process = Runtime.getRuntime().exec("ping -c 4 YOUR_VPS_IP_HERE")
-                  val reader = BufferedReader(InputStreamReader(process.inputStream))
-                  val output = StringBuilder()
-                  var line: String?
-                  while (reader.readLine().also { line = it } != null) {
-                      output.append(line).append("\n")
-                  }
-                  process.waitFor()
-                  if (output.isEmpty()) {
-                      "Ping failed or blocked."
-                  } else {
-                      output.toString()
-                  }
-              } catch (e: Exception) {
-                  "Error: ${e.message}"
-              }
-          }
-          pingResult.value = result
+  fun connectVpn(context: Context, serverAddr: String, clientPriv: String, serverPub: String) {
+      vpnState.value = VpnState.Connecting
+      val intent = Intent(context, ShadowLinkVpnService::class.java).apply {
+          putExtra("SERVER_ADDR", serverAddr)
+          putExtra("CLIENT_PRIV", clientPriv)
+          putExtra("SERVER_PUB", serverPub)
       }
+      context.startForegroundService(intent)
+      vpnState.value = VpnState.Connected(serverAddr)
   }
+
+  fun disconnectVpn(context: Context) {
+      val intent = Intent(context, ShadowLinkVpnService::class.java).apply { action = "STOP" }
+      context.startService(intent)
+      vpnState.value = VpnState.Disconnected
+  }
+      
 }
 
 sealed interface MainScreenUiState {

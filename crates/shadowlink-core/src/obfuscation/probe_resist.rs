@@ -110,6 +110,8 @@ fn build_404_response() -> Vec<u8> {
 /// When a connection fails the ShadowLink handshake, this handler
 /// takes over and serves a decoy website.
 pub struct ProbeResistHandler {
+    /// Active web-server fallback address (e.g. "127.0.0.1:80")
+    fallback_addr: Option<String>,
     /// The HTML content to serve as a decoy
     decoy_html: String,
     /// Pre-built HTTP response bytes
@@ -121,18 +123,48 @@ pub struct ProbeResistHandler {
 impl ProbeResistHandler {
     /// Create a new probe resistance handler with the default decoy page.
     pub fn new() -> Self {
-        Self::with_custom_html(DEFAULT_DECOY_HTML.to_string())
+        Self::with_fallback(None, None)
     }
 
     /// Create a new probe resistance handler with custom decoy HTML.
     pub fn with_custom_html(html: String) -> Self {
-        let response_bytes = build_http_response(&html);
+        Self::with_fallback(None, Some(html))
+    }
+
+    /// Create a new probe resistance handler with optional fallback address and custom HTML.
+    pub fn with_fallback(fallback_addr: Option<String>, html: Option<String>) -> Self {
+        let decoy_html = html.unwrap_or_else(|| DEFAULT_DECOY_HTML.to_string());
+        let response_bytes = build_http_response(&decoy_html);
         let not_found_bytes = build_404_response();
         Self {
-            decoy_html: html,
+            fallback_addr,
+            decoy_html,
             response_bytes,
             not_found_bytes,
         }
+    }
+
+    /// Handle an unauthenticated connection: proxy to active fallback web-server if configured,
+    /// otherwise serve the built-in decoy HTML website.
+    pub async fn handle_unauthenticated<S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
+        &self,
+        stream: &mut S,
+    ) -> Result<()> {
+        if let Some(ref addr) = self.fallback_addr {
+            match tokio::net::TcpStream::connect(addr).await {
+                Ok(mut upstream) => {
+                    let _ = tokio::io::copy_bidirectional(stream, &mut upstream).await;
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to connect to active fallback {}: {}. Serving decoy HTML instead.",
+                        addr, e
+                    );
+                }
+            }
+        }
+        self.serve_decoy(stream).await
     }
 
     /// Serve the decoy page to an unauthorized connection.
@@ -157,6 +189,7 @@ impl ProbeResistHandler {
             _ => {
                 // Timeout or error — just serve the default page and close
                 let _ = stream.write_all(&self.response_bytes).await;
+                let _ = stream.flush().await;
                 return Ok(());
             }
         };
@@ -174,12 +207,19 @@ impl ProbeResistHandler {
             stream.write_all(&self.response_bytes).await?;
         }
 
+        stream.flush().await?;
+
         Ok(())
     }
 
     /// Get the decoy HTML content
     pub fn decoy_html(&self) -> &str {
         &self.decoy_html
+    }
+
+    /// Get the configured active fallback address
+    pub fn fallback_addr(&self) -> Option<&str> {
+        self.fallback_addr.as_deref()
     }
 }
 
@@ -246,5 +286,39 @@ mod tests {
         let response_str = String::from_utf8_lossy(&response);
         assert!(response_str.contains("HTTP/1.1 200 OK"));
         assert!(response_str.contains("CloudSync Solutions"));
+    }
+
+    #[tokio::test]
+    async fn test_active_fallback_proxy() {
+        // Start a mock upstream web server (e.g. Nginx mock)
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap().to_string();
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                let mut buf = [0u8; 128];
+                let _ = socket.read(&mut buf).await;
+                let _ = socket.write_all(b"HTTP/1.1 200 OK\r\n\r\nUpstream Nginx").await;
+            }
+        });
+
+        let handler = ProbeResistHandler::with_fallback(Some(local_addr), None);
+        let (mut client, mut server) = tokio::io::duplex(65536);
+
+        let client_handle = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            client.write_all(b"GET / HTTP/1.1\r\n\r\n").await.unwrap();
+            let mut response = Vec::new();
+            client.read_to_end(&mut response).await.unwrap();
+            response
+        });
+
+        handler.handle_unauthenticated(&mut server).await.unwrap();
+        drop(server);
+
+        let response = client_handle.await.unwrap();
+        let response_str = String::from_utf8_lossy(&response);
+        assert!(response_str.contains("Upstream Nginx"));
     }
 }

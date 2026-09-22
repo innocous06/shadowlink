@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use windows_sys::Win32::System::Threading::{WaitForSingleObject, INFINITE};
-use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
 use anyhow::{anyhow, Result};
 
 use super::wintun_ffi::{WintunApi, WINTUN_ADAPTER_HANDLE, WINTUN_SESSION_HANDLE};
@@ -12,7 +11,14 @@ pub struct TunDevice {
     session: WINTUN_SESSION_HANDLE,
 }
 
-
+/// Newtype wrapper around a raw Wintun session handle pointer (as usize).
+/// Implements Send + Sync so it can be moved into a background thread safely.
+/// SAFETY: Wintun session handles are documented to be thread-safe for
+/// concurrent reads via WintunReceivePacket / WintunAllocateSendPacket.
+#[derive(Copy, Clone)]
+pub struct WintunSessionHandle(pub usize);
+unsafe impl Send for WintunSessionHandle {}
+unsafe impl Sync for WintunSessionHandle {}
 
 // Ensure TunDevice can be sent across threads (Wintun handles are thread-safe)
 unsafe impl Send for TunDevice {}
@@ -20,7 +26,7 @@ unsafe impl Sync for TunDevice {}
 
 impl TunDevice {
     pub fn new(api: Arc<WintunApi>, name: &str) -> Result<Self> {
-        let pool_name = format!("ShadowLink\0");
+        let pool_name = "ShadowLink\0".to_string();
         let adapter_name = format!("{}\0", name);
         
         use std::os::windows::ffi::OsStrExt;
@@ -56,10 +62,10 @@ impl TunDevice {
     pub fn start_reader(&self) -> mpsc::UnboundedReceiver<Vec<u8>> {
         let (tx, rx) = mpsc::unbounded_channel();
         let api = Arc::clone(&self.api);
-        let session_ptr = self.session as usize;
+        let session_handle = WintunSessionHandle(self.session as usize);
 
         std::thread::spawn(move || {
-            let session = session_ptr as WINTUN_SESSION_HANDLE;
+            let session = session_handle.0 as WINTUN_SESSION_HANDLE;
             let wait_event = unsafe { (api.GetReadWaitEvent)(session) };
             
             loop {

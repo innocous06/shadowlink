@@ -59,8 +59,7 @@ pub fn pad_data(data: &[u8], config: &PaddingConfig) -> Vec<u8> {
 
     // Pad to nearest multiple
     let padded_size = if config.pad_to_multiple > 0 {
-        ((content_size + config.pad_to_multiple - 1) / config.pad_to_multiple)
-            * config.pad_to_multiple
+        content_size.div_ceil(config.pad_to_multiple) * config.pad_to_multiple
     } else {
         content_size
     };
@@ -111,7 +110,7 @@ pub fn unpad_data(padded: &[u8]) -> Result<Vec<u8>> {
 
 /// Generate random dummy data for fake traffic injection.
 /// The dummy data is indistinguishable from real encrypted traffic.
-pub fn generate_dummy_packet(config: &PaddingConfig) -> Vec<u8> {
+pub fn generate_dummy_packet(_config: &PaddingConfig) -> Vec<u8> {
     let mut rng = rand::thread_rng();
     let size = rng.gen_range(64..=512);
     let mut data = vec![0u8; size];
@@ -133,7 +132,12 @@ mod tests {
 
         assert_eq!(recovered, original);
         assert!(padded.len() > original.len()); // Should be padded
-        assert_eq!(padded.len() % config.pad_to_multiple, 0); // Should be aligned (when no extra random)
+        // With random extra padding (default max_padding=256), total size is not guaranteed
+        // to be aligned. Alignment is only guaranteed when max_padding=0 (see test_pad_various_sizes).
+        // Verify instead that the base (pre-random) section is at least 64-byte aligned.
+        let content_size = 4 + original.len(); // header + data
+        let base_padded = ((content_size + 63) / 64) * 64;
+        assert!(padded.len() >= base_padded, "padded len should be at least the aligned base");
     }
 
     #[test]

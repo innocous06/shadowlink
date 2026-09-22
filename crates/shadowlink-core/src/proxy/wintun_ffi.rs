@@ -1,7 +1,12 @@
+// Wintun FFI bindings use Windows API naming conventions (PascalCase for params
+// and SCREAMING_SNAKE_CASE for type aliases) to exactly match the C header,
+// making FFI bindings easier to audit against the upstream Wintun SDK.
+// transmute type is inferred from the destination field type — annotations are redundant.
+#![allow(non_snake_case, non_camel_case_types, clippy::missing_transmute_annotations)]
+
 use std::ffi::c_void;
-use std::ptr;
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
-use windows_sys::Win32::Foundation::{HMODULE, HANDLE};
+use windows_sys::Win32::Foundation::HANDLE;
 
 pub type WINTUN_ADAPTER_HANDLE = *mut c_void;
 pub type WINTUN_SESSION_HANDLE = *mut c_void;
@@ -66,6 +71,10 @@ unsafe impl Send for WintunApi {}
 unsafe impl Sync for WintunApi {}
 
 impl WintunApi {
+    /// # Safety
+    ///
+    /// The caller must ensure that `dll_path` points to an authentic, trusted
+    /// Wintun DLL. Loading untrusted dynamic libraries can execute arbitrary code.
     pub unsafe fn load(dll_path: &str) -> Result<Self, String> {
         use std::os::windows::ffi::OsStrExt;
         let mut path_u16: Vec<u16> = std::ffi::OsStr::new(dll_path).encode_wide().collect();
@@ -80,7 +89,10 @@ impl WintunApi {
             ($name:expr) => {{
                 let sym = GetProcAddress(hmodule, $name.as_ptr());
                 if sym.is_none() {
-                    return Err(format!("Failed to find function {}", std::str::from_utf8($name).unwrap()));
+                    return Err(format!(
+                        "Failed to find function {}",
+                        std::str::from_utf8($name).unwrap()
+                    ));
                 }
                 std::mem::transmute(sym.unwrap())
             }};

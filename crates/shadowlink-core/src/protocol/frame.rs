@@ -6,21 +6,20 @@
 //! ```text
 //! +--------+--------+---------------------------+
 //! | Length (2 bytes) |     Encrypted Payload     |
-//! |    Big-Endian    |   (up to 16384 bytes)     |
+//! |    Big-Endian    |   (up to 65535 bytes)     |
 //! +--------+--------+---------------------------+
 //! ```
 //!
-//! ## Why 16KB max?
-//! TLS 1.3 record maximum is 16384 bytes. By matching this limit,
-//! our framed messages look identical in size to normal TLS records
-//! when wrapped in the TLS camouflage layer.
+//! ## Payload Limits:
+//! The length prefix is a 2-byte big-endian unsigned integer (u16),
+//! allowing a maximum payload of 65535 bytes per frame.
 
 use anyhow::{anyhow, Context, Result};
 use bytes::{Buf, BufMut, BytesMut};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
-/// Maximum payload size per frame (matches TLS 1.3 record limit)
-pub const MAX_FRAME_PAYLOAD: usize = 16384;
+/// Maximum payload size per frame (65535 bytes, max expressible in u16)
+pub const MAX_FRAME_PAYLOAD: usize = 65535;
 
 /// Minimum frame size (2-byte length header)
 pub const FRAME_HEADER_SIZE: usize = 2;
@@ -234,7 +233,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_frames() {
-        let (mut client, mut server) = duplex(65536);
+        let (mut client, server) = duplex(65536);
 
         let messages = vec![b"First".to_vec(), b"Second".to_vec(), b"Third".to_vec()];
 
@@ -255,7 +254,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_max_size_frame() {
-        let (mut client, mut server) = duplex(65536);
+        // Frame = 65535 payload + 2 header = 65537 bytes; use 128KB buffer to avoid deadlock
+        let (mut client, mut server) = duplex(131072);
 
         let payload = vec![0xAB; MAX_FRAME_PAYLOAD];
         write_frame(&mut client, &payload).await.unwrap();
@@ -280,3 +280,4 @@ mod tests {
         assert!(result.is_err());
     }
 }
+

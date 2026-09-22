@@ -41,12 +41,12 @@ if [ ! -f /etc/shadowlink/cert.pem ]; then
         -days 3650 -nodes \
         -keyout /etc/shadowlink/key.pem \
         -out /etc/shadowlink/cert.pem \
-        -subj "/CN=cloudsyncsolutions.com" \
-        -addext "subjectAltName=DNS:cloudsyncsolutions.com,DNS:www.cloudsyncsolutions.com"
+        -subj "/CN=example.com" \
+        -addext "subjectAltName=DNS:example.com,DNS:www.example.com"
     
     chmod 600 /etc/shadowlink/key.pem
     chmod 644 /etc/shadowlink/cert.pem
-    echo "  ✓ Self-signed cert generated (CN=cloudsyncsolutions.com)"
+    echo "  ✓ Self-signed cert generated (CN=example.com)"
     echo "  TIP: For production, use Let's Encrypt with certbot for a real cert"
 else
     echo "  ✓ Certificate already exists, skipping"
@@ -199,3 +199,5 @@ echo " 8. On Oracle Cloud Dashboard:"
 echo "      Ensure VCN ingress rules allow port 443 TCP"
 echo ""
 echo "═══════════════════════════════════════════════"
+
+

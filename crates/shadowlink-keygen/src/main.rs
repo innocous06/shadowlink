@@ -12,8 +12,7 @@
 //! Keys are encrypted with a passphrase before saving to disk.
 
 use anyhow::{Context, Result};
-use shadowlink_core::crypto::keys::{EncryptedKeyFile, KeyPair};
-use std::io::Write;
+use shadowlink_core::crypto::keys::KeyPair;
 use std::path::Path;
 
 fn main() -> Result<()> {
@@ -99,11 +98,7 @@ fn generate_keypair(role: &str) -> Result<()> {
 }
 
 fn get_passphrase(role: &str) -> Result<String> {
-    eprint!("  Enter passphrase for {} key: ", role);
-    std::io::stderr().flush()?;
-    let mut pass1 = String::new();
-    std::io::stdin().read_line(&mut pass1)?;
-    let pass1 = pass1.trim().to_string();
+    let pass1 = rpassword::prompt_password(format!("  Enter passphrase for {} key: ", role))?;
 
     if pass1.is_empty() {
         return Err(anyhow::anyhow!("Passphrase cannot be empty"));
@@ -113,11 +108,7 @@ fn get_passphrase(role: &str) -> Result<String> {
         eprintln!("  ⚠ WARNING: Passphrase is very short. Use at least 8 characters.");
     }
 
-    eprint!("  Confirm passphrase: ");
-    std::io::stderr().flush()?;
-    let mut pass2 = String::new();
-    std::io::stdin().read_line(&mut pass2)?;
-    let pass2 = pass2.trim().to_string();
+    let pass2 = rpassword::prompt_password("  Confirm passphrase: ")?;
 
     if pass1 != pass2 {
         return Err(anyhow::anyhow!("Passphrases do not match"));

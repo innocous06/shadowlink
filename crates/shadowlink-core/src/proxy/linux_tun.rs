@@ -102,8 +102,13 @@ impl LinuxTun {
                 let n = unsafe {
                     libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
                 };
-                if n <= 0 {
-                    // fd closed or error — exit thread cleanly.
+                if n < 0 {
+                    let errno = unsafe { *libc::__errno_location() };
+                    eprintln!("LinuxTun read error: errno {}", errno);
+                    break;
+                }
+                if n == 0 {
+                    // Interface closed (clean EOF)
                     break;
                 }
                 let data = buf[..n as usize].to_vec();

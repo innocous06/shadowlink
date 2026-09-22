@@ -17,9 +17,8 @@
 use anyhow::{Context, Result};
 use rustls::pki_types::ServerName;
 use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
-use tokio_rustls::{TlsAcceptor, TlsConnector, TlsStream};
+use tokio_rustls::{TlsAcceptor, TlsConnector};
 
 /// Configuration for the TLS camouflage layer
 #[derive(Clone)]
